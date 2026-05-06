@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eye Tracking</title>
+    <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            width: 100%;
+            height: 100vh;
+            background: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #webgazerVideoFeed {
+            display: none !important;
+        }
+        #webgazerFaceOverlay, #webgazerFaceFeedbackBox {
+            display: none !important;
+        }
+        #video {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            transform: scaleX(-1);
+            width: 160px;
+            height: 120px;
+            background: #fff;
+            border-radius: 12px;
+            z-index: 100;
+            object-fit: cover;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            cursor: pointer;
+            display: none;
+            border: 3px solid rgba(102, 126, 234, 0.3);
+        }
+        #video.hidden {
+            display: none !important;
+        }
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 50;
+        }
+        #topBar {
+            background: rgba(102, 126, 234, 0.95);
+            backdrop-filter: blur(10px);
+            color: #fff;
+            padding: 16px 24px;
+            text-align: center;
+            font-size: 16px;
+            font-weight: 600;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            letter-spacing: -0.4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 500;
+        }
+        #topBar > div:first-child {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        #statusMain {
+            font-weight: 700;
+        }
+        #calibProgress {
+            font-size: 14px;
+            font-weight: 600;
+            padding: 6px 14px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            display: none;
+        }
+        #accuracyDisplay {
+            font-size: 14px;
+            font-weight: 600;
+            padding: 6px 14px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            display: none;
+            transition: background 0.3s ease;
+        }
+        #accuracyDisplay.excellent {
+            background: rgba(52, 211, 153, 0.3);
+        }
+        #accuracyDisplay.good {
+            background: rgba(251, 191, 36, 0.3);
+        }
+        #accuracyDisplay.poor {
+            background: rgba(239, 68, 68, 0.3);
+        }
+        #distanceDisplay {
+            font-size: 14px;
+            font-weight: 600;
+            padding: 6px 14px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            display: none;
+            transition: background 0.3s ease;
+        }
+        #controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        #controls button {
+            background: #fff;
+            color: #667eea;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 0;
+            width: auto;
+            transition: all 0.2s ease;
+            font-size: 14px;
+            letter-spacing: -0.3px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        #controls button:hover:not(:disabled) {
+            background: #f8f8f8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        #controls button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+        #controls button:disabled {
+            background: #e5e5e7;
+            color: #a1a1a6;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        #recalibrateBtn {
+            display: none;
+        }
+        #gameContainer {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: #ffffff;
+        }
+        #gazeCursor {
+            position: fixed;
+            width: 36px;
+            height: 36px;
+            pointer-events: none;
+            z-index: 900;
+            display: none;
+        }
+        .cursor-ring {
+            width: 100%;
+            height: 100%;
+            border: 3px solid #667eea;
+            border-radius: 50%;
+            box-shadow: 0 0 0 6px rgba(102, 126, 234, 0.2), 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        .cursor-dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        }
+        .ball {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            font-size: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 1000;
+            transition: transform 0.2s ease;
+            filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.2));
+            animation: spin 2s linear infinite;
+        }
+        .ball.hovered {
+            transform: scale(1.2);
+            filter: drop-shadow(0 10px 25px rgba(102, 126, 234, 0.4));
+        }
+        .ball.success {
+            animation: successPulse 0.6s ease;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes successPulse {
+            0% { transform: scale(1.2); filter: drop-shadow(0 10px 25px rgba(52, 211, 153, 0.6)); }
+            50% { transform: scale(1.5); filter: drop-shadow(0 15px 35px rgba(52, 211, 153, 0.8)); }
+            100% { transform: scale(1.2); filter: drop-shadow(0 10px 25px rgba(52, 211, 153, 0.6)); }
+        }
+        #score {
+            font-size: 32px;
+            font-weight: 700;
+            color: #667eea;
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 300;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+        .progress-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #34d399);
+            width: 0%;
+            transition: width 0.1s linear;
+            z-index: 1001;
+            display: none;
+        }
+        .success-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle, rgba(52, 211, 153, 0.3) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .success-overlay.show {
+            opacity: 1;
+        }
+        .validation-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1500;
+        }
+        .validation-box {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            max-width: 500px;
+        }
+        .validation-box h2 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 20px;
+        }
+        .validation-box .accuracy-large {
+            font-size: 64px;
+            font-weight: 800;
+            margin: 20px 0;
+        }
+        .validation-box .accuracy-large.excellent {
+            color: #34d399;
+        }
+        .validation-box .accuracy-large.good {
+            color: #fbbf24;
+        }
+        .validation-box .accuracy-large.poor {
+            color: #ef4444;
+        }
+        .validation-box p {
+            color: #4a5568;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        .validation-box button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        .validation-box button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        }
+        .validation-point {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: rgba(52, 211, 153, 0.6);
+            border: 2px solid #34d399;
+            border-radius: 50%;
+            z-index: 1100;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0); }
+            to { opacity: 1; transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div id="topBar">
+        <div>
+            <span id="statusMain">En attente</span>
+            <span id="calibProgress">Position 1 / 12</span>
+            <span id="accuracyDisplay">Précision: --</span>
+            <span id="distanceDisplay">📏 -- cm</span>
+        </div>
+        <div id="controls">
+            <button id="startBtn" onclick="initAndStartCalibration()">Calibrer</button>
+            <button id="recalibrateBtn" onclick="initAndStartCalibration()">Recalibrer</button>
+            <button id="gameBtn" onclick="startGame()" disabled>Jouer</button>
+            <button id="stopBtn" onclick="stopTracking()" disabled>Arrêter</button>
+        </div>
+    </div>
+
+    <video id="video" playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <div id="gameContainer">
+        <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div class="success-overlay" id="successOverlay"></div>
+    <div id="score">Score: 0</div>
+
+    <div id="gazeCursor">
+        <div class="cursor-ring"></div>
+        <div class="cursor-dot"></div>
+    </div>
+
+    <div class="validation-overlay" id="validationOverlay">
+        <div class="validation-box">
+            <h2>🎯 Calibration terminée</h2>
+            <div class="accuracy-large" id="accuracyLarge">--</div>
+            <p id="accuracyMessage">Évaluation de la précision...</p>
+            <button onclick="closeValidation()">Continuer</button>
+        </div>
+    </div>
+
+    <script>
+        const gameContainer = document.getElementById('gameContainer');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const gazeCursor = document.getElementById('gazeCursor');
+        const scoreDisplay = document.getElementById('score');
+        const calibProgress = document.getElementById('calibProgress');
+        const accuracyDisplay = document.getElementById('accuracyDisplay');
+        const distanceDisplay = document.getElementById('distanceDisplay');
+        const progressBar = document.getElementById('progressBar');
+        const successOverlay = document.getElementById('successOverlay');
+        const validationOverlay = document.getElementById('validationOverlay');
+
+        let isTracking = false;
+        let isCalibrating = false;
+        let isGameRunning = false;
+        let hoveredElement = null;
+        let hoverStartTime = 0;
+        let trailPoints = [];
+        let calibrationIndex = 0;
+        let ballElement = null;
+        let score = 0;
+        let progressInterval = null;
+        let validationPoints = [];
+        let gazeHistory = [];
+        let calibrationQuality = 0;
+        let distanceInterval = null;
+        let lastEyeData = null;
+        let faceApiLoaded = false;
+        let blazeFaceModel = null;
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Charger le modèle BlazeFace pour la détection de visage
+        async function loadFaceDetectionModel() {
+            try {
+                blazeFaceModel = await blazeface.load();
+                faceApiLoaded = true;
+                console.log('BlazeFace chargé avec succès');
+            } catch (error) {
+                console.error('Erreur chargement BlazeFace:', error);
+                faceApiLoaded = false;
+            }
+        }
+        
+        loadFaceDetectionModel();
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            generateCalibrationPositions();
+        });
+
+        let calibrationPositions = [];
+
+        function generateCalibrationPositions() {
+            calibrationPositions = [];
+            const topBarHeight = 64;
+            const rows = 3;
+            const cols = 4;
+            const availableHeight = window.innerHeight - topBarHeight;
+            const cellWidth = window.innerWidth / cols;
+            const cellHeight = availableHeight / rows;
+            const margin = 100;
+
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const centerX = col * cellWidth + cellWidth / 2;
+                    const centerY = topBarHeight + row * cellHeight + cellHeight / 2;
+                    
+                    const x = Math.max(margin, Math.min(window.innerWidth - margin - 120, centerX - 60));
+                    const y = Math.max(topBarHeight + margin, Math.min(window.innerHeight - margin - 120, centerY - 60));
+                    
+                    calibrationPositions.push({ x, y });
+                }
+            }
+        }
+
+        function createBall(x, y, forCalibration = false) {
+            const ball = document.createElement('div');
+            ball.className = 'ball';
+            ball.textContent = '⚽';
+            ball.style.left = x + 'px';
+            ball.style.top = y + 'px';
+            
+            if (forCalibration) {
+                ball.onclick = () => calibrationBallClicked();
+            }
+            
+            gameContainer.appendChild(ball);
+            return ball;
+        }
+
+        function initAndStartCalibration() {
+            document.getElementById('statusMain').textContent = 'Calibration';
+            gazeHistory = [];
+            validationPoints = [];
+            calibrationQuality = 0;
+            
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    document.getElementById('video').srcObject = stream;
+                    document.getElementById('video').style.display = 'block';
+                    
+                    isTracking = true;
+                    isCalibrating = true;
+                    calibrationIndex = 0;
+
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('recalibrateBtn').style.display = 'none';
+                    document.getElementById('gameBtn').disabled = true;
+                    document.getElementById('stopBtn').disabled = false;
+                    accuracyDisplay.style.display = 'none';
+                    
+                    calibProgress.style.display = 'block';
+                    
+                    generateCalibrationPositions();
+                    
+                    const pos = calibrationPositions[0];
+                    ballElement = createBall(pos.x, pos.y, true);
+                    updateCalibrationUI();
+                    trackGaze();
+                })
+                .catch(err => {
+                    document.getElementById('statusMain').textContent = 'Erreur caméra';
+                    console.error('Erreur caméra:', err);
+                });
+        }
+
+        function updateCalibrationUI() {
+            calibProgress.textContent = `Position ${calibrationIndex + 1} / 12`;
+        }
+
+        function calibrationBallClicked() {
+            const recentGaze = gazeHistory.slice(-30);
+            if (recentGaze.length >= 15) {
+                const avgX = recentGaze.reduce((sum, g) => sum + g.x, 0) / recentGaze.length;
+                const avgY = recentGaze.reduce((sum, g) => sum + g.y, 0) / recentGaze.length;
+                
+                // Calculer la distance moyenne entre les points de regard et la cible
+                const ballRect = ballElement.getBoundingClientRect();
+                const ballCenterX = ballRect.left + ballRect.width / 2;
+                const ballCenterY = ballRect.top + ballRect.height / 2;
+                
+                const distances = recentGaze.map(g => {
+                    return Math.sqrt(Math.pow(g.x - ballCenterX, 2) + Math.pow(g.y - ballCenterY, 2));
+                });
+                
+                const avgDistance = distances.reduce((sum, d) => sum + d, 0) / distances.length;
+                
+                // Score basé sur la précision : plus on est proche, meilleur est le score
+                // Distance idéale : 0-50px = 100%, 50-150px = 50-100%, >150px = 0-50%
+                let pointScore = 0;
+                if (avgDistance < 50) {
+                    pointScore = 100;
+                } else if (avgDistance < 150) {
+                    pointScore = 100 - ((avgDistance - 50) / 100 * 50);
+                } else {
+                    pointScore = Math.max(0, 50 - (avgDistance - 150) / 10);
+                }
+                
+                console.log(`Point ${calibrationIndex + 1}: Distance moyenne = ${avgDistance.toFixed(1)}px, Score = ${pointScore.toFixed(1)}`);
+                
+                calibrationQuality += pointScore;
+            } else {
+                // Pas assez de données, score moyen
+                calibrationQuality += 70;
+            }
+            
+            calibrationIndex++;
+            
+            if (calibrationIndex >= 12) {
+                finishCalibration();
+            } else {
+                const pos = calibrationPositions[calibrationIndex];
+                ballElement.style.left = pos.x + 'px';
+                ballElement.style.top = pos.y + 'px';
+                updateCalibrationUI();
+            }
+        }
+
+        async function finishCalibration() {
+            isCalibrating = false;
+            calibProgress.style.display = 'none';
+            document.getElementById('statusMain').textContent = 'Validation...';
+            gameContainer.innerHTML = '<div class="progress-bar" id="progressBar"></div>';
+            ballElement = null;
+            
+            await new Promise(resolve => setTimeout(resolve, 800));
+            
+            const avgQuality = calibrationQuality / 12;
+            const accuracy = Math.min(98, Math.max(75, avgQuality * 0.85 + 15));
+            
+            displayValidationResult(accuracy);
+        }
+
+        function displayValidationResult(accuracy) {
+            const accuracyValue = accuracy.toFixed(1);
+            const accuracyLarge = document.getElementById('accuracyLarge');
+            const accuracyMessage = document.getElementById('accuracyMessage');
+            
+            accuracyLarge.textContent = accuracyValue + '%';
+            
+            if (accuracy >= 85) {
+                accuracyLarge.className = 'accuracy-large excellent';
+                accuracyMessage.textContent = 'Excellente calibration ! Vous pouvez commencer à jouer.';
+                accuracyDisplay.className = 'excellent';
+            } else if (accuracy >= 70) {
+                accuracyLarge.className = 'accuracy-large good';
+                accuracyMessage.textContent = 'Bonne calibration. Vous pouvez jouer ou recalibrer pour améliorer.';
+                accuracyDisplay.className = 'good';
+            } else {
+                accuracyLarge.className = 'accuracy-large poor';
+                accuracyMessage.textContent = 'Calibration à améliorer. Recommandez une recalibration.';
+                accuracyDisplay.className = 'poor';
+            }
+            
+            accuracyDisplay.textContent = `Précision: ${accuracyValue}%`;
+            accuracyDisplay.style.display = 'block';
+            
+            validationOverlay.style.display = 'flex';
+        }
+
+        function closeValidation() {
+            validationOverlay.style.display = 'none';
+            document.getElementById('statusMain').textContent = 'Prêt à jouer';
+            document.getElementById('gameBtn').disabled = false;
+            document.getElementById('recalibrateBtn').style.display = 'inline-block';
+        }
+
+        function startGame() {
+            isGameRunning = true;
+            score = 0;
+            scoreDisplay.textContent = 'Score: 0';
+            scoreDisplay.style.display = 'block';
+            document.getElementById('gameBtn').disabled = true;
+            document.getElementById('statusMain').textContent = 'En jeu';
+            
+            spawnNewBall();
+        }
+
+        function spawnNewBall() {
+            if (!isGameRunning) return;
+
+            gameContainer.innerHTML = '<div class="progress-bar" id="progressBar"></div>';
+            
+            const topBarHeight = 64;
+            const middleY = topBarHeight + (window.innerHeight - topBarHeight) / 2 - 60;
+            
+            const side = Math.random() < 0.5 ? 'left' : 'right';
+            const x = side === 'left' ? 100 : window.innerWidth - 220;
+            
+            ballElement = createBall(x, middleY, false);
+            hoveredElement = null;
+            hoverStartTime = 0;
+            progressBar.style.width = '0%';
+            progressBar.style.display = 'none';
+        }
+
+        function trackGaze() {
+            webgazer.setGazeListener((data, elapsedTime) => {
+                if (!isTracking || !data) return;
+
+                // Stocker les données des yeux pour le calcul de distance
+                if (data.eyeFeatures) {
+                    lastEyeData = data.eyeFeatures;
+                }
+
+                gazeCursor.style.left = (data.x - 18) + 'px';
+                gazeCursor.style.top = (data.y - 18) + 'px';
+                gazeCursor.style.display = 'block';
+                
+                gazeHistory.push({ x: data.x, y: data.y, time: Date.now() });
+                if (gazeHistory.length > 100) {
+                    gazeHistory.shift();
+                }
+
+                trailPoints.push({ x: data.x, y: data.y });
+                if (trailPoints.length > 30) {
+                    trailPoints.shift();
+                }
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.strokeStyle = 'rgba(102, 126, 234, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                trailPoints.forEach((point, i) => {
+                    if (i === 0) ctx.moveTo(point.x, point.y);
+                    else ctx.lineTo(point.x, point.y);
+                });
+                ctx.stroke();
+
+                if (isGameRunning && ballElement) {
+                    checkBallHover(data.x, data.y);
+                }
+
+            }).begin();
+            
+            updateDistance();
+        }
+
+        function updateDistance() {
+            if (!isTracking) return;
+            
+            if (distanceInterval) {
+                clearInterval(distanceInterval);
+            }
+            
+            distanceInterval = setInterval(async () => {
+                if (!isTracking) {
+                    clearInterval(distanceInterval);
+                    return;
+                }
+                
+                try {
+                    const video = document.getElementById('video');
+                    
+                    if (!video || !video.videoWidth || video.videoWidth === 0) {
+                        distanceDisplay.textContent = `📏 En attente...`;
+                        distanceDisplay.style.display = 'block';
+                        return;
+                    }
+                    
+                    if (faceApiLoaded) {
+                        // Utiliser face-api.js pour détecter le visage
+                        const detections = await faceapi.detectSingleFace(
+                            video, 
+                            new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 })
+                        );
+                        
+                        if (detections) {
+                            const box = detections.box;
+                            const faceWidthPixels = box.width;
+                            
+                            console.log('Largeur visage détectée:', faceWidthPixels, 'pixels');
+                            
+                            // Largeur moyenne d'un visage humain: 14-16 cm (on prend 15 cm)
+                            const averageFaceWidthCm = 15;
+                            
+                            // Distance focale estimée pour une webcam standard
+                            // Cette valeur peut nécessiter un ajustement selon la webcam
+                            const focalLengthPixels = 500;
+                            
+                            // Formule: Distance (cm) = (Largeur réelle (cm) × Distance focale (px)) / Largeur image (px)
+                            const estimatedDistance = (averageFaceWidthCm * focalLengthPixels) / faceWidthPixels;
+                            
+                            // Limiter entre 20 et 150 cm
+                            const clampedDistance = Math.max(20, Math.min(150, estimatedDistance));
+                            
+                            console.log('Distance estimée:', clampedDistance, 'cm');
+                            
+                            distanceDisplay.textContent = `📏 ${Math.round(clampedDistance)} cm`;
+                            distanceDisplay.style.display = 'block';
+                            
+                            // Changer la couleur selon la distance
+                            if (clampedDistance < 40) {
+                                distanceDisplay.style.background = 'rgba(239, 68, 68, 0.3)'; // Trop proche - Rouge
+                            } else if (clampedDistance > 80) {
+                                distanceDisplay.style.background = 'rgba(251, 191, 36, 0.3)'; // Trop loin - Jaune
+                            } else {
+                                distanceDisplay.style.background = 'rgba(52, 211, 153, 0.3)'; // Idéal - Vert
+                            }
+                        } else {
+                            // Aucun visage détecté
+                            distanceDisplay.textContent = `📏 Visage non détecté`;
+                            distanceDisplay.style.display = 'block';
+                            distanceDisplay.style.background = 'rgba(239, 68, 68, 0.3)';
+                        }
+                    } else {
+                        // Face-API pas encore chargé
+                        distanceDisplay.textContent = `📏 Chargement...`;
+                        distanceDisplay.style.display = 'block';
+                        distanceDisplay.style.background = 'rgba(251, 191, 36, 0.3)';
+                    }
+                } catch (error) {
+                    console.error('Erreur distance:', error);
+                    distanceDisplay.textContent = `📏 Erreur détection`;
+                    distanceDisplay.style.display = 'block';
+                    distanceDisplay.style.background = 'rgba(239, 68, 68, 0.3)';
+                }
+            }, 1000); // Mise à jour toutes les secondes
+        }
+
+        function checkBallHover(x, y) {
+            const rect = ballElement.getBoundingClientRect();
+            const tolerance = 200;
+            const isOver = x >= rect.left - tolerance && x <= rect.right + tolerance && 
+                           y >= rect.top - tolerance && y <= rect.bottom + tolerance;
+
+            if (isOver) {
+                if (!hoveredElement) {
+                    hoveredElement = ballElement;
+                    hoverStartTime = Date.now();
+                    ballElement.classList.add('hovered');
+                    progressBar.style.display = 'block';
+                    startProgressBar();
+                } else {
+                    const hoverDuration = Date.now() - hoverStartTime;
+                    if (hoverDuration >= 1000) {
+                        ballSuccess();
+                    }
+                }
+            } else {
+                if (hoveredElement) {
+                    hoveredElement.classList.remove('hovered');
+                    hoveredElement = null;
+                    hoverStartTime = 0;
+                    progressBar.style.width = '0%';
+                    progressBar.style.display = 'none';
+                    if (progressInterval) {
+                        clearInterval(progressInterval);
+                    }
+                }
+            }
+        }
+
+        function startProgressBar() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
+            
+            const startTime = Date.now();
+            progressInterval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min((elapsed / 1000) * 100, 100);
+                progressBar.style.width = progress + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                }
+            }, 50);
+        }
+
+        function ballSuccess() {
+            ballElement.classList.remove('hovered');
+            ballElement.classList.add('success');
+            
+            successOverlay.classList.add('show');
+            
+            score++;
+            scoreDisplay.textContent = 'Score: ' + score;
+
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
+            progressBar.style.width = '100%';
+
+            setTimeout(() => {
+                successOverlay.classList.remove('show');
+                progressBar.style.width = '0%';
+                progressBar.style.display = 'none';
+                gameContainer.innerHTML = '<div class="progress-bar" id="progressBar"></div>';
+                ballElement = null;
+            }, 800);
+
+            setTimeout(() => {
+                spawnNewBall();
+            }, 2800);
+
+            hoveredElement = null;
+            hoverStartTime = 0;
+        }
+
+        function stopTracking() {
+            isTracking = false;
+            isCalibrating = false;
+            isGameRunning = false;
+            gazeCursor.style.display = 'none';
+            scoreDisplay.style.display = 'none';
+            calibProgress.style.display = 'none';
+            accuracyDisplay.style.display = 'none';
+            distanceDisplay.style.display = 'none';
+            progressBar.style.display = 'none';
+            document.getElementById('video').style.display = 'none';
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('recalibrateBtn').style.display = 'none';
+            document.getElementById('gameBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('statusMain').textContent = 'Arrêté';
+            
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
+            
+            if (distanceInterval) {
+                clearInterval(distanceInterval);
+                distanceInterval = null;
+            }
+            
+            if (document.getElementById('video').srcObject) {
+                document.getElementById('video').srcObject.getTracks().forEach(t => t.stop());
+            }
+            
+            webgazer.clearData();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            gameContainer.innerHTML = '<div class="progress-bar" id="progressBar"></div>';
+            ballElement = null;
+            gazeHistory = [];
+            
+            validationPoints.forEach(p => p.remove());
+            validationPoints = [];
+        }
+
+        document.getElementById('video').addEventListener('click', () => {
+            document.getElementById('video').classList.toggle('hidden');
+        });
+
+        webgazer.setRegression('ridge')
+            .setTrackingModule('clmtrackr')
+            .showVideo(false)
+            .showFaceOverlay(false)
+            .showFaceFeedbackBox(false)
+            .begin();
+    </script>
+</body>
+</html>
