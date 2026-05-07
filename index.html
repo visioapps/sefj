@@ -326,6 +326,7 @@ let smoothH=0.5, gazeDir='none';
 let estimatedDistCm=80; // distance estimée en cm (défaut 80cm)
 const IPD_REF_MM=63;    // écart inter-pupillaire adulte moyen
 let testRunning=false;
+let testFinished=false; // guard contre double appel finishTest
 let stepIndex=0;        // current BALL_SIZES index
 let spinSide='left';    // current step's spin side
 let stepStartTime=0;
@@ -422,6 +423,7 @@ function startTest(){
     stepIndex=i; // fallback: start at last if all too big
   }
   correctHoldStart=null;
+  testFinished=false;
   lastGoodSize=LANDOLT_LEVELS[stepIndex];
   showScreen('sTest');
   setupStep();
@@ -548,7 +550,7 @@ function setupStep(){
 function positionHalf(containerId, side, sz){
   const el=document.getElementById(containerId);
   const vw=window.innerWidth, vh=window.innerHeight;
-  const cx=(side==='left'? vw*0.20 : vw*0.80);
+  const cx=(side==='left'? vw*0.13 : vw*0.87);
   const cy=vh/2;
   el.style.position='absolute';
   el.style.left=(cx-sz/2)+'px';
@@ -566,7 +568,7 @@ function testLoop(ts){
  
   document.getElementById('timerHint').textContent=remaining.toFixed(1);
   // Live update distance label
-  if(typeof LANDOLT_LEVELS!=='undefined' && stepIndex<LANDOLT_LEVELS.length){
+  if(!testFinished && stepIndex<LANDOLT_LEVELS.length){
     updateDistLabel(LANDOLT_LEVELS[stepIndex]);
   }
  
@@ -600,7 +602,7 @@ function testLoop(ts){
  
   // timeout?
   if(elapsed>=STEP_DURATION){
-    // failed this level
+    // failed this level — lastGoodSize already set to last succeeded level
     finishTest(false);
     return;
   }
@@ -609,6 +611,8 @@ function testLoop(ts){
 }
  
 function finishTest(completed){
+  if(testFinished) return; // guard double appel
+  testFinished=true;
   testRunning=false;
   cancelAnimationFrame(rafId);
   if(spinRafId){cancelAnimationFrame(spinRafId);spinRafId=null;}
@@ -643,7 +647,7 @@ function finishTest(completed){
   document.getElementById('rVerdict').textContent=verdict;
  
   renderHistory();
-  showScreen('sResults');
+  setTimeout(()=>showScreen('sResults'), 0);
 }
  
 function renderHistory(){
