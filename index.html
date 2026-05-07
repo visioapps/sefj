@@ -202,6 +202,71 @@ input[type=range]::-webkit-slider-thumb{
   text-transform:uppercase;cursor:pointer;color:var(--ink);transition:border-color .15s;
 }
 .btn-csv:hover{border-color:var(--ink);}
+ 
+/* ── PAUSE OVERLAY ── */
+#pauseOverlay{
+  display:none;
+  position:fixed;inset:0;z-index:200;
+  background:rgba(255,255,255,0.96);
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:32px;
+}
+#pauseOverlay.visible{display:flex;}
+.pause-title{
+  font-size:clamp(28px,6vw,52px);font-weight:300;
+  letter-spacing:0.15em;text-transform:uppercase;color:var(--ink);
+}
+.pause-actions{display:flex;flex-direction:column;gap:14px;align-items:center;width:100%;max-width:280px;}
+.btn-resume{
+  width:100%;background:var(--ink);color:#fff;border:none;border-radius:6px;
+  padding:16px 0;font-size:14px;letter-spacing:0.12em;text-transform:uppercase;
+  cursor:pointer;transition:opacity .15s;
+}
+.btn-resume:hover{opacity:.8;}
+.btn-restart{
+  width:100%;background:none;border:1px solid #ccc;border-radius:6px;
+  padding:14px 0;font-size:13px;letter-spacing:0.1em;text-transform:uppercase;
+  cursor:pointer;color:var(--ink);transition:border-color .15s;
+}
+.btn-restart:hover{border-color:var(--ink);}
+ 
+/* ── RESULT MODAL ── */
+#resultModal{
+  display:none;
+  position:fixed;inset:0;z-index:300;
+  background:rgba(255,255,255,0.97);
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:36px;padding:40px 24px;
+}
+#resultModal.visible{display:flex;}
+.rm-score{text-align:center;}
+.rm-num{
+  font-size:clamp(72px,14vw,130px);font-weight:300;
+  line-height:1;letter-spacing:-0.04em;color:var(--ink);
+}
+.rm-unit{font-size:clamp(13px,2vw,18px);color:var(--muted);letter-spacing:0.12em;text-transform:uppercase;margin-top:4px;}
+.rm-dist{font-size:12px;color:#aaa;margin-top:6px;letter-spacing:0.06em;}
+.rm-verdict{font-size:14px;color:var(--muted);letter-spacing:0.04em;text-align:center;max-width:300px;}
+.rm-actions{display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px;}
+.btn-newtest{
+  width:100%;background:var(--ink);color:#fff;border:none;border-radius:6px;
+  padding:16px 0;font-size:14px;letter-spacing:0.12em;text-transform:uppercase;
+  cursor:pointer;transition:opacity .15s;
+}
+.btn-newtest:hover{opacity:.8;}
+.btn-modal-csv{
+  width:100%;background:none;border:1px solid #ddd;border-radius:6px;
+  padding:14px 0;font-size:13px;letter-spacing:0.1em;text-transform:uppercase;
+  cursor:pointer;color:var(--ink);transition:border-color .15s;
+}
+.btn-modal-csv:hover{border-color:var(--ink);}
+.rm-history{width:100%;max-width:340px;}
+.rm-h-title{font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:#ccc;margin-bottom:8px;}
+.rm-h-list{display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;}
+.rm-h-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:12px;
+}
 </style>
 </head>
 <body>
@@ -248,27 +313,33 @@ input[type=range]::-webkit-slider-thumb{
   </div>
 </div>
  
-<!-- ══ RESULTS ══ -->
-<div class="screen" id="sResults">
-  <div class="r-score">
-    <div class="r-num" id="rNum">—</div>
-    <div class="r-unit">dixièmes d'acuité visuelle</div>
-    <div style="font-size:12px;color:#aaa;margin-top:6px;letter-spacing:0.06em;" id="rDist"></div>
-  </div>
+<!-- ══ RESULTS (kept for compat) ══ -->
+<div class="screen" id="sResults" style="display:none!important;"></div>
  
-  <div class="r-detail">
-    <div class="r-line" id="rLevels">—</div>
-    <div class="r-line" id="rVerdict">—</div>
+<!-- ══ PAUSE OVERLAY ══ -->
+<div id="pauseOverlay">
+  <div class="pause-title">Pause</div>
+  <div class="pause-actions">
+    <button class="btn-resume" onclick="resumeTest()">▶ Continuer</button>
+    <button class="btn-restart" onclick="restartFromPause()">↺ Nouveau test</button>
   </div>
+</div>
  
-  <div class="history-wrap">
-    <div class="h-title">Sessions</div>
-    <div class="history-list" id="histList"></div>
+<!-- ══ RESULT MODAL ══ -->
+<div id="resultModal">
+  <div class="rm-score">
+    <div class="rm-num" id="rmNum">—</div>
+    <div class="rm-unit">dixièmes d'acuité visuelle</div>
+    <div class="rm-dist" id="rmDist"></div>
   </div>
- 
-  <div class="r-actions">
-    <button class="btn-again" onclick="goSetup()">Rejouer</button>
-    <button class="btn-csv" onclick="exportCSV()">Export CSV</button>
+  <div class="rm-verdict" id="rmVerdict"></div>
+  <div class="rm-history">
+    <div class="rm-h-title">Sessions précédentes</div>
+    <div class="rm-h-list" id="rmHistList"></div>
+  </div>
+  <div class="rm-actions">
+    <button class="btn-newtest" onclick="newTestFromModal()">Nouveau test</button>
+    <button class="btn-modal-csv" onclick="exportCSV()">Export CSV</button>
   </div>
 </div>
  
@@ -327,6 +398,8 @@ let estimatedDistCm=80; // distance estimée en cm (défaut 80cm)
 const IPD_REF_MM=63;    // écart inter-pupillaire adulte moyen
 let testRunning=false;
 let testFinished=false; // guard contre double appel finishTest
+let testPaused=false;
+let pauseStart=0;        // timestamp quand pause démarre (pour corriger stepStartTime)
 let stepIndex=0;        // current BALL_SIZES index
 let spinSide='left';    // current step's spin side
 let stepStartTime=0;
@@ -462,8 +535,53 @@ function startTest(){
   spinAngle=0;
   cancelAnimationFrame(rafId);
   showScreen('sTest');
+  // Tap anywhere on arena = pause
+  document.getElementById('arena').onclick=()=>pauseTest();
   setupStep();
   rafId=requestAnimationFrame(masterLoop);
+}
+ 
+function pauseTest(){
+  if(!testRunning||testFinished) return;
+  testRunning=false;
+  testPaused=true;
+  pauseStart=Date.now();
+  cancelAnimationFrame(rafId);
+  // Figer la barre de progression
+  const fill=document.getElementById('progFill');
+  const w=fill.getBoundingClientRect().width/fill.parentElement.getBoundingClientRect().width*100;
+  fill.style.transition='none';
+  fill.style.width=w+'%';
+  document.getElementById('pauseOverlay').classList.add('visible');
+}
+ 
+function resumeTest(){
+  if(!testPaused) return;
+  document.getElementById('pauseOverlay').classList.remove('visible');
+  // Corriger stepStartTime pour ne pas compter le temps de pause
+  const pausedMs=Date.now()-pauseStart;
+  stepStartTime+=pausedMs;
+  testPaused=false;
+  testRunning=true;
+  lastRafTs=null;
+  // Relancer la barre
+  const elapsed=Date.now()-stepStartTime;
+  const remaining=Math.max(0, STEP_DURATION-elapsed);
+  const fill=document.getElementById('progFill');
+  fill.style.transition='none';
+  fill.style.width=(remaining/STEP_DURATION*100)+'%';
+  setTimeout(()=>{
+    fill.style.transition='width '+remaining+'ms linear';
+    fill.style.width='0%';
+  },30);
+  rafId=requestAnimationFrame(masterLoop);
+}
+ 
+function restartFromPause(){
+  document.getElementById('pauseOverlay').classList.remove('visible');
+  testPaused=false;
+  testRunning=false;
+  startTest();
 }
  
 // ── CANVAS DRAWING ──
@@ -647,29 +765,33 @@ function finishTest(completed){
   if(history.length>30)history=history.slice(0,30);
   localStorage.setItem('gazeHist2',JSON.stringify(history));
  
-  // fill result screen
-  document.getElementById('rNum').textContent=avLabel(finalLevel.av);
-  document.getElementById('rDist').textContent='à ~'+Math.round(estimatedDistCm)+' cm — AV corrigée 80 cm : '+avLabel(avCorrFinal)+'/10';
-  document.getElementById('rLevels').innerHTML=`<strong>${levelsReached}</strong> niveau${levelsReached>1?'x':''} passé${levelsReached>1?'s':''}`;
+  // Remplir la modale de résultats
+  document.getElementById('rmNum').textContent=avLabel(finalLevel.av);
+  document.getElementById('rmDist').textContent='à ~'+distAtEnd+' cm  ·  AV corrigée 80 cm : '+avLabel(avCorrFinal)+'/10';
   let verdict='';
-  if(levelsReached>=10) verdict='Acuité attentionnelle excellente.';
+  if(completed) verdict='Score parfait — tous les niveaux réussis !';
+  else if(levelsReached>=10) verdict='Acuité attentionnelle excellente.';
   else if(levelsReached>=7) verdict='Bonne attraction visuelle au mouvement.';
   else if(levelsReached>=4) verdict='Attraction modérée — sensible aux grands stimuli.';
   else verdict='Faible attraction détectée.';
-  if(completed) verdict='Score parfait — tous les niveaux réussis !';
-  document.getElementById('rVerdict').textContent=verdict;
- 
+  document.getElementById('rmVerdict').textContent=verdict;
+  // Historique dans la modale
   renderHistory();
-  setTimeout(()=>showScreen('sResults'), 0);
+  setTimeout(()=>document.getElementById('resultModal').classList.add('visible'), 0);
 }
  
 function renderHistory(){
-  const list=document.getElementById('histList');
-  if(!history.length){list.innerHTML='<div style="font-size:12px;color:#ccc;padding:8px 0">Aucune session</div>';return;}
-  list.innerHTML=history.map((s,i)=>`
-    <div class="h-item">
-      <span class="h-date">${s.date} · ${s.levels} niveau${s.levels>1?'x':''}</span>
-      <span class="h-score">AV ${avLabel(s.av)}/10${s.avCorr?` (→${s.avCorr} @80)`:''}</span>
+  // Rend l'historique dans la modale résultats
+  const list=document.getElementById('rmHistList');
+  if(!list) return;
+  if(!history.length){
+    list.innerHTML='<div style="font-size:12px;color:#ccc;padding:6px 0">Aucune session précédente</div>';
+    return;
+  }
+  list.innerHTML=history.slice(0,8).map(s=>`
+    <div class="rm-h-item">
+      <span style="color:var(--muted)">${s.date} · ${s.levels} niv.</span>
+      <span style="font-weight:500">AV ${avLabel(s.av)}/10${s.avCorr?' (→'+s.avCorr+')':''}</span>
     </div>
   `).join('');
 }
@@ -679,6 +801,11 @@ function goSetup(){
   testFinished=true;
   cancelAnimationFrame(rafId);
   showScreen('sSetup');
+}
+ 
+function newTestFromModal(){
+  document.getElementById('resultModal').classList.remove('visible');
+  startTest();
 }
  
 function exportCSV(){
@@ -696,8 +823,7 @@ function showScreen(id){
   document.getElementById(id).classList.add('active');
 }
  
-renderHistory();
+// renderHistory appelé uniquement quand la modale est ouverte
 </script>
 </body>
 </html>
- 
