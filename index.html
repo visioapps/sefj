@@ -401,7 +401,7 @@ function processIris(res,ctx,w,h){
     // On utilise: dist_cm = (IPD_REF_MM * w) / (ipdPx * 25.4 / dpi_cam)
     // Simplifié: facteur calibré empiriquement pour caméra 320px ~60° FOV
     // dist_cm ≈ IPD_REF_MM * (w / ipdPx) * K  où K ≈ 0.12 pour FOV ~60°
-    const rawDist=(IPD_REF_MM*(w/ipdPx)*0.12);
+    const rawDist=(IPD_REF_MM*(w/ipdPx)*0.070);
     estimatedDistCm=estimatedDistCm*0.9+rawDist*0.1; // lissage
   }
  
@@ -415,82 +415,60 @@ function processIris(res,ctx,w,h){
 // ── TEST ──
 function startTest(){
   if(!camReady)return;
-  // Start at first level that fits on screen (≤ 40% vw and ≤ 85% vh)
   const maxSzPx=Math.min(window.innerWidth*0.38, window.innerHeight*0.85);
   stepIndex=0;
   for(let i=0;i<LANDOLT_LEVELS.length;i++){
     if(mmToPx(LANDOLT_LEVELS[i].hmm)<=maxSzPx){ stepIndex=i; break; }
-    stepIndex=i; // fallback: start at last if all too big
+    stepIndex=i;
   }
   correctHoldStart=null;
   testFinished=false;
+  testRunning=true;
   lastGoodSize=LANDOLT_LEVELS[stepIndex];
+  lastRafTs=null;
+  spinAngle=0;
+  cancelAnimationFrame(rafId);
   showScreen('sTest');
   setupStep();
-  testRunning=true;
-  rafId=requestAnimationFrame(testLoop);
+  rafId=requestAnimationFrame(masterLoop);
 }
  
 // ── CANVAS DRAWING ──
 let spinAngle=0;
-let spinRafId=null;
 const STROKE_RATIO=0.40; // Landolt C: e = H/5 = 2r/5 → sw = 0.4 × r
+const SPIN_SPEED=40*2*Math.PI/(60*1000); // 40 RPM en rad/ms
+let currentSpinSz=0;
+let lastRafTs=null;
  
 function drawRing(canvas, sz, isSpinning, angle){
   const dpr=window.devicePixelRatio||1;
-  // CSS size
   canvas.style.width=sz+'px';
   canvas.style.height=sz+'px';
-  // Physical pixels for sharp rendering
   canvas.width=Math.round(sz*dpr);
   canvas.height=Math.round(sz*dpr);
   const ctx=canvas.getContext('2d');
   ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,sz,sz);
- 
-  const cx=sz/2, cy=sz/2;
-  const r=sz/2;
-  // Landolt C: e = H/5, stroke width = e = H/5 = 2r/5
+  const cx=sz/2, cy=sz/2, r=sz/2;
   const sw=Math.max(2, r*STROKE_RATIO);
-  const ir=r-sw/2; // arc radius (center of stroke)
- 
-  // Draw full black ring — crisp antialiased stroke
+  const ir=r-sw/2;
   ctx.beginPath();
   ctx.arc(cx,cy,ir,0,Math.PI*2);
   ctx.strokeStyle='#000000';
   ctx.lineWidth=sw;
   ctx.stroke();
- 
   if(isSpinning){
-    // Cut the gap (ouverture) using destination-out → truly transparent
-    // Gap angular width = ouverture / r = e / r = sw / ir
     const halfSpan=sw/(2*ir);
     ctx.save();
     ctx.globalCompositeOperation='destination-out';
     ctx.beginPath();
     ctx.moveTo(cx,cy);
-    ctx.arc(cx,cy,r+2, angle-halfSpan, angle+halfSpan);
+    ctx.arc(cx,cy,r+2,angle-halfSpan,angle+halfSpan);
     ctx.closePath();
     ctx.fillStyle='rgba(0,0,0,1)';
     ctx.fill();
     ctx.restore();
   }
-}
- 
-function startSpinLoop(sz){
-  if(spinRafId) cancelAnimationFrame(spinRafId);
-  const spinId=spinSide==='left'?'bLeft':'bRight';
-  const canvas=document.getElementById(spinId);
-  const speed=40*2*Math.PI/(60*1000); // 40 RPM = 40 tours/minute
-  let last=null;
-  function loop(ts){
-    if(!testRunning) return;
-    if(last!==null) spinAngle+=(ts-last)*speed;
-    last=ts;
-    drawRing(canvas, sz, true, spinAngle);
-    spinRafId=requestAnimationFrame(loop);
-  }
-  spinRafId=requestAnimationFrame(loop);
 }
  
 function updateDistLabel(level){
@@ -539,7 +517,7 @@ function setupStep(){
   correctHoldStart=null;
   stepStartTime=Date.now();
  
-  startSpinLoop(sz);
+  currentSpinSz=sz;
  
   setTimeout(()=>{
     document.getElementById('progFill').style.transition='width '+STEP_DURATION+'ms linear';
@@ -559,23 +537,28 @@ function positionHalf(containerId, side, sz){
   el.style.height=sz+'px';
 }
  
-function testLoop(ts){
-  if(!testRunning){return;}
+function masterLoop(ts){
+  // UNIQUE point d'entrée RAF — spin + logique test
+  if(!testRunning) return;
+ 
+  // Avancer l'angle de spin
+  if(lastRafTs!==null) spinAngle+=(ts-lastRafTs)*SPIN_SPEED;
+  lastRafTs=ts;
+ 
+  // Dessiner le cercle tournant
+  const spinCanvas=document.getElementById(spinSide==='left'?'bLeft':'bRight');
+  drawRing(spinCanvas, currentSpinSz, true, spinAngle);
  
   const now=Date.now();
   const elapsed=now-stepStartTime;
   const remaining=Math.max(0,(STEP_DURATION-elapsed)/1000);
  
   document.getElementById('timerHint').textContent=remaining.toFixed(1);
-  // Live update distance label
-  if(!testFinished && stepIndex<LANDOLT_LEVELS.length){
+  if(stepIndex<LANDOLT_LEVELS.length){
     updateDistLabel(LANDOLT_LEVELS[stepIndex]);
   }
  
-  // gaze on spin side?
   const gazingCorrect=(gazeDir===spinSide);
- 
-  // update glow
   const bSpinEl=document.getElementById(spinSide==='left'?'bLeft':'bRight');
   if(gazingCorrect) bSpinEl.classList.add('gazing');
   else bSpinEl.classList.remove('gazing');
@@ -584,38 +567,34 @@ function testLoop(ts){
     if(correctHoldStart===null) correctHoldStart=now;
     const held=now-correctHoldStart;
     if(held>=HOLD_CORRECT_MS){
-      // SUCCESS — record this level then advance
-      lastGoodSize=LANDOLT_LEVELS[stepIndex]; // save before increment
+      lastGoodSize=LANDOLT_LEVELS[stepIndex];
       stepIndex++;
       if(stepIndex>=LANDOLT_LEVELS.length){
-        // beat all levels — lastGoodSize is already the final level
         finishTest(true);
-        return;
+        return; // STOP — plus de RAF
       }
+      lastRafTs=null;
+      spinAngle=0;
       setupStep();
-      rafId=requestAnimationFrame(testLoop);
-      return;
+      // continue la boucle
     }
   } else {
     correctHoldStart=null;
   }
  
-  // timeout?
   if(elapsed>=STEP_DURATION){
-    // failed this level — lastGoodSize already set to last succeeded level
     finishTest(false);
-    return;
+    return; // STOP — plus de RAF
   }
  
-  rafId=requestAnimationFrame(testLoop);
+  rafId=requestAnimationFrame(masterLoop); // un seul RAF actif
 }
  
 function finishTest(completed){
   if(testFinished) return; // guard double appel
   testFinished=true;
   testRunning=false;
-  cancelAnimationFrame(rafId);
-  if(spinRafId){cancelAnimationFrame(spinRafId);spinRafId=null;}
+  cancelAnimationFrame(rafId); // arrête masterLoop
  
   const finalLevel=lastGoodSize; // always use lastGoodSize (updated before finishTest call)
   const levelsReached=completed?LANDOLT_LEVELS.length:stepIndex;
@@ -663,6 +642,7 @@ function renderHistory(){
  
 function goSetup(){
   testRunning=false;
+  testFinished=true;
   cancelAnimationFrame(rafId);
   showScreen('sSetup');
 }
