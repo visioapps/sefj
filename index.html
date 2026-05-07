@@ -365,13 +365,28 @@ async function initCam(){
   camReady=true;
   document.getElementById('camDot').className='cam-dot ok';
   document.getElementById('camTxt').textContent='Prêt';
+  // Afficher la direction en temps réel dans la mini-cam
+  setInterval(()=>{
+    if(!testRunning) return;
+    const indicator = gazeDir==='left'?'← ' : gazeDir==='right'?' →' : '·';
+    const src = headDir!=='none'&&gazeDir===headDir ? '(tête)' : gazeDir!=='none'?'(iris)':'';
+    document.getElementById('camTxt'); // pas d'affichage hors test
+  },100);
   document.getElementById('btnInit').style.display='none';
   document.getElementById('btnGo').disabled=false;
 }
  
-// ── IRIS PROCESSING ──
+// ── IRIS + TÊTE PROCESSING ──
 const IRIS_L=[474,475,476,477],IRIS_R=[469,470,471,472];
 const EL_OUT=263,EL_IN=362,ER_OUT=33,ER_IN=133;
+// Landmarks pour rotation de tête (yaw)
+// 454=tragus droit, 234=tragus gauche, 1=bout du nez
+// En image miroir (scaleX(-1)), D et G sont inversés → on utilise la position relative du nez
+const NOSE_TIP=1, CHEEK_R=454, CHEEK_L=234;
+const HEAD_YAW_SEUIL=0.04; // seuil rotation tête (en fraction de largeur visage)
+ 
+let smoothHead=0; // -1=gauche, 0=centre, +1=droite (normalisé)
+let headDir='none';
  
 function cOf(lms,idx,w,h){let x=0,y=0;idx.forEach(i=>{x+=lms[i].x;y+=lms[i].y;});return{x:x/idx.length*w,y:y/idx.length*h};}
 function pOf(lms,i,w,h){return{x:lms[i].x*w,y:lms[i].y*h};}
@@ -387,28 +402,46 @@ function drawCal(ctx,cx,cy,r,col){
 }
  
 function processIris(res,ctx,w,h){
-  if(!res.multiFaceLandmarks||!res.multiFaceLandmarks.length){gazeDir='none';return;}
+  if(!res.multiFaceLandmarks||!res.multiFaceLandmarks.length){gazeDir='none';headDir='none';return;}
   const lms=res.multiFaceLandmarks[0];
   const cL=cOf(lms,IRIS_L,w,h),cR=cOf(lms,IRIS_R,w,h);
   drawCal(ctx,cL.x,cL.y,diamOG/2,'#4af');
   drawCal(ctx,cR.x,cR.y,diamOD/2,'#f4a');
  
-  // ── Estimation distance par IPD apparent ──
-  // IPD en pixels dans l'image caméra 320px large
+  // ── Distance via IPD ──
   const ipdPx=Math.abs(cL.x-cR.x);
   if(ipdPx>10){
-    // Résolution caméra en px/mm = (PX_PER_CM/10) mais caméra≠écran
-    // On utilise: dist_cm = (IPD_REF_MM * w) / (ipdPx * 25.4 / dpi_cam)
-    // Simplifié: facteur calibré empiriquement pour caméra 320px ~60° FOV
-    // dist_cm ≈ IPD_REF_MM * (w / ipdPx) * K  où K ≈ 0.12 pour FOV ~60°
     const rawDist=(IPD_REF_MM*(w/ipdPx)*0.070);
-    estimatedDistCm=estimatedDistCm*0.9+rawDist*0.1; // lissage
+    estimatedDistCm=estimatedDistCm*0.9+rawDist*0.1;
   }
  
+  // ── Direction du regard (iris) ──
   const avg=((hRatio(lms,IRIS_L,EL_OUT,EL_IN,w,h))+(hRatio(lms,IRIS_R,ER_OUT,ER_IN,w,h)))/2;
   smoothH=smoothH*0.75+avg*0.25;
-  if(smoothH<0.5-SEUIL) gazeDir='right';
-  else if(smoothH>0.5+SEUIL) gazeDir='left';
+  let irisDir='none';
+  // NB: caméra miroir → ratio<0.5 = œil va vers la droite réelle
+  if(smoothH<0.5-SEUIL) irisDir='right';
+  else if(smoothH>0.5+SEUIL) irisDir='left';
+ 
+  // ── Rotation de tête (yaw) via asymétrie joues/nez ──
+  // On mesure (nez - milieu des deux joues) normalisé par largeur du visage
+  const nose=pOf(lms,NOSE_TIP,w,h);
+  const cheekR=pOf(lms,CHEEK_R,w,h);
+  const cheekL=pOf(lms,CHEEK_L,w,h);
+  const faceW=Math.abs(cheekR.x-cheekL.x);
+  if(faceW>10){
+    const midX=(cheekR.x+cheekL.x)/2;
+    const rawYaw=(nose.x-midX)/faceW; // >0 = nez à droite image = tête tournée gauche réelle (miroir)
+    smoothHead=smoothHead*0.75+rawYaw*0.25;
+  }
+  // miroir : nez décalé à droite dans image = tête vers gauche réelle
+  if(smoothHead>HEAD_YAW_SEUIL) headDir='left';
+  else if(smoothHead<-HEAD_YAW_SEUIL) headDir='right';
+  else headDir='none';
+ 
+  // ── Direction combinée : iris OU tête suffisent ──
+  if(irisDir!=='none') gazeDir=irisDir;
+  else if(headDir!=='none') gazeDir=headDir;
   else gazeDir='none';
 }
  
@@ -576,7 +609,8 @@ function masterLoop(ts){
       lastRafTs=null;
       spinAngle=0;
       setupStep();
-      // continue la boucle
+      rafId=requestAnimationFrame(masterLoop);
+      return; // repart proprement après setupStep
     }
   } else {
     correctHoldStart=null;
