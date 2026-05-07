@@ -245,7 +245,7 @@ input[type=range]::-webkit-slider-thumb{
 <div class="screen" id="sResults">
   <div class="r-score">
     <div class="r-num" id="rNum">—</div>
-    <div class="r-unit">dernière taille perçue (cm)</div>
+    <div class="r-unit">dixièmes d'acuité visuelle</div>
   </div>
  
   <div class="r-detail">
@@ -269,9 +269,32 @@ input[type=range]::-webkit-slider-thumb{
 const SEUIL = 0.03;
 const STEP_DURATION = 5000; // max ms per level
 const HOLD_CORRECT_MS = 600; // ms of correct gaze needed to advance
-const BALL_SIZES = [220, 180, 150, 120, 96, 76, 60, 46, 36, 28, 22, 16];
+// ── Landolt C — AV en dixièmes et dimensions physiques ──
+// H_mm = hauteur totale C = 5 × épaisseur e = 5 × ouverture
+// À 5m: AV(1/10e) = 1/(5 × H_m) → H_mm = 1000/(5 × AV_decimale)  [distance 5m normative]
+// Mais on calcule pour distance libre: on stocke AV et H_mm de la table
+const LANDOLT_LEVELS = [
+  {av:0.3,  hmm:194.08},
+  {av:0.4,  hmm:145.51},
+  {av:0.5,  hmm:116.39},
+  {av:0.6,  hmm:96.98},
+  {av:0.8,  hmm:72.73},
+  {av:1.0,  hmm:58.18},
+  {av:1.3,  hmm:44.75},
+  {av:1.6,  hmm:36.36},
+  {av:2.0,  hmm:29.09},
+  {av:2.5,  hmm:23.27},
+  {av:3.2,  hmm:18.18},
+  {av:4.0,  hmm:14.54},
+  {av:5.0,  hmm:11.64},
+  {av:6.3,  hmm:9.23},
+  {av:7.0,  hmm:8.31},
+  {av:8.0,  hmm:7.27},
+  {av:9.0,  hmm:6.46},
+  {av:10.0, hmm:5.82},
+];
  
-// ── PX → CM conversion using a 1cm CSS reference element ──
+// ── PX ↔ MM conversion via 1cm CSS reference ──
 function getPxPerCm(){
   const el=document.createElement('div');
   el.style.cssText='position:absolute;width:1cm;height:1cm;visibility:hidden;';
@@ -281,7 +304,10 @@ function getPxPerCm(){
   return px>0?px:37.8;
 }
 const PX_PER_CM=getPxPerCm();
-function pxToCm(px){return (px/PX_PER_CM).toFixed(1);}
+const PX_PER_MM=PX_PER_CM/10;
+ 
+function mmToPx(mm){ return Math.round(mm * PX_PER_MM); }
+function avLabel(av){ return av % 1 === 0 ? av.toFixed(0) : av.toString().replace('.',','); }
 // side sequence: first always centered (both), then random L/R per step
 // We place spin ball on a random side each step
  
@@ -294,7 +320,7 @@ let stepIndex=0;        // current BALL_SIZES index
 let spinSide='left';    // current step's spin side
 let stepStartTime=0;
 let correctHoldStart=null; // timestamp when correct gaze began
-let lastGoodSize=BALL_SIZES[0];
+let lastGoodSize=LANDOLT_LEVELS[0];
 let rafId=null;
 let history=JSON.parse(localStorage.getItem('gazeHist2')||'[]');
  
@@ -367,7 +393,7 @@ function startTest(){
   if(!camReady)return;
   stepIndex=0;
   correctHoldStart=null;
-  lastGoodSize=BALL_SIZES[0];
+  lastGoodSize=LANDOLT_LEVELS[0];
   showScreen('sTest');
   setupStep();
   testRunning=true;
@@ -377,7 +403,7 @@ function startTest(){
 // ── CANVAS DRAWING ──
 let spinAngle=0;
 let spinRafId=null;
-const STROKE_RATIO=0.10; // stroke width = 10% of radius
+const STROKE_RATIO=0.40; // Landolt C: e = H/5 = 2r/5 → sw = 0.4 × r
  
 function drawRing(canvas, sz, isSpinning, angle){
   canvas.width=sz; canvas.height=sz;
@@ -385,44 +411,32 @@ function drawRing(canvas, sz, isSpinning, angle){
   ctx.clearRect(0,0,sz,sz);
   const cx=sz/2, cy=sz/2;
   const r=sz/2;
+  // Landolt C: e = H/5, sw = e = H/5 = 2r/5
   const sw=Math.max(3, r*STROKE_RATIO);
-  const ir=r-sw/2; // inner radius for stroke center
- 
-  // White fill inside
-  ctx.beginPath();
-  ctx.arc(cx,cy,r,0,Math.PI*2);
-  ctx.fillStyle='#ffffff';
-  ctx.fill();
+  const ir=r-sw/2; // radius to stroke center
  
   if(isSpinning){
-    // Draw full black ring first
+    // 1. Draw full black ring (stroke only — center stays transparent)
     ctx.beginPath();
     ctx.arc(cx,cy,ir,0,Math.PI*2);
     ctx.strokeStyle='#000000';
     ctx.lineWidth=sw;
     ctx.stroke();
  
-    // Draw white ray (sector) from center to edge covering ring portion
-    // Ray is one spoke: angular width = stroke / ir radians, min 18deg
+    // 2. Cut the gap (ouverture) using destination-out → truly transparent
     const halfSpan=Math.max(Math.PI/10, (sw*0.6)/ir);
-    // Draw white filled sector (covers the ring arc)
+    ctx.save();
+    ctx.globalCompositeOperation='destination-out';
     ctx.beginPath();
     ctx.moveTo(cx,cy);
-    ctx.arc(cx,cy,r+1, angle-halfSpan, angle+halfSpan);
+    ctx.arc(cx,cy,r+2, angle-halfSpan, angle+halfSpan);
     ctx.closePath();
-    ctx.fillStyle='#ffffff';
+    ctx.fillStyle='rgba(0,0,0,1)';
     ctx.fill();
+    ctx.restore();
  
-    // Redraw partial arc: clip out the white zone from the black ring
-    // This is already handled — white sector sits on top
- 
-    // Draw center white disc (hides ray base)
-    ctx.beginPath();
-    ctx.arc(cx,cy,ir-sw/2,0,Math.PI*2);
-    ctx.fillStyle='#ffffff';
-    ctx.fill();
   } else {
-    // Static ring: just black stroke on white
+    // Static ring: stroke only, center transparent
     ctx.beginPath();
     ctx.arc(cx,cy,ir,0,Math.PI*2);
     ctx.strokeStyle='#000000';
@@ -448,7 +462,8 @@ function startSpinLoop(sz){
 }
  
 function setupStep(){
-  const sz=BALL_SIZES[stepIndex];
+  const level=LANDOLT_LEVELS[stepIndex];
+  const sz=mmToPx(level.hmm); // pixel diameter = H total
   // random side for spin ball (pure random each step)
   spinSide=Math.random()<0.5?'left':'right';
   spinAngle=0;
@@ -470,7 +485,7 @@ function setupStep(){
   bSpin.width=sz; bSpin.height=sz;
   bSpin.className='ball-canvas';
  
-  document.getElementById('sizeLabel').textContent='Ø '+pxToCm(sz)+' cm';
+  document.getElementById('sizeLabel').textContent='AV '+avLabel(level.av)+'/10';
   document.getElementById('progFill').style.transition='none';
   document.getElementById('progFill').style.width='100%';
   correctHoldStart=null;
@@ -518,9 +533,9 @@ function testLoop(ts){
     const held=now-correctHoldStart;
     if(held>=HOLD_CORRECT_MS){
       // SUCCESS — advance
-      lastGoodSize=BALL_SIZES[stepIndex];
+      lastGoodSize=LANDOLT_LEVELS[stepIndex];
       stepIndex++;
-      if(stepIndex>=BALL_SIZES.length){
+      if(stepIndex>=LANDOLT_LEVELS.length){
         // beat all levels
         finishTest(true);
         return;
@@ -548,12 +563,12 @@ function finishTest(completed){
   cancelAnimationFrame(rafId);
   if(spinRafId){cancelAnimationFrame(spinRafId);spinRafId=null;}
  
-  const finalSize=completed?BALL_SIZES[BALL_SIZES.length-1]:lastGoodSize;
-  const levelsReached=completed?BALL_SIZES.length:stepIndex;
+  const finalLevel=completed?LANDOLT_LEVELS[LANDOLT_LEVELS.length-1]:lastGoodSize;
+  const levelsReached=completed?LANDOLT_LEVELS.length:stepIndex;
  
   const session={
     date:new Date().toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),
-    size:finalSize,
+    av:finalLevel.av,
     levels:levelsReached,
     completed
   };
@@ -562,7 +577,7 @@ function finishTest(completed){
   localStorage.setItem('gazeHist2',JSON.stringify(history));
  
   // fill result screen
-  document.getElementById('rNum').textContent=pxToCm(finalSize)+' cm';
+  document.getElementById('rNum').textContent=avLabel(finalLevel.av);
   document.getElementById('rLevels').innerHTML=`<strong>${levelsReached}</strong> niveau${levelsReached>1?'x':''} passé${levelsReached>1?'s':''}`;
   let verdict='';
   if(levelsReached>=10) verdict='Acuité attentionnelle excellente.';
@@ -582,7 +597,7 @@ function renderHistory(){
   list.innerHTML=history.map((s,i)=>`
     <div class="h-item">
       <span class="h-date">${s.date} · ${s.levels} niveau${s.levels>1?'x':''}</span>
-      <span class="h-score">Ø ${pxToCm(s.size)} cm</span>
+      <span class="h-score">AV ${avLabel(s.av)}/10</span>
     </div>
   `).join('');
 }
@@ -594,8 +609,8 @@ function goSetup(){
 }
  
 function exportCSV(){
-  const rows=[['#','Date','Taille finale','Niveaux','Complété']];
-  history.forEach((s,i)=>rows.push([history.length-i,s.date,pxToCm(s.size)+'cm',s.levels,s.completed?'oui':'non']));
+  const rows=[['#','Date','AV (dixièmes)','Niveaux','Complété']];
+  history.forEach((s,i)=>rows.push([history.length-i,s.date,s.av,s.levels,s.completed?'oui':'non']));
   const csv=rows.map(r=>r.join(',')).join('\n');
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
@@ -612,3 +627,4 @@ renderHistory();
 </script>
 </body>
 </html>
+ 
