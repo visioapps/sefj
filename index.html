@@ -8,7 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-
+ 
 :root{
   --bg:#ffffff;
   --ink:#111111;
@@ -16,7 +16,7 @@
   --ball:#111111;
   --spin-glow:rgba(17,17,17,0.12);
 }
-
+ 
 body{
   background:var(--bg);
   color:var(--ink);
@@ -28,14 +28,14 @@ body{
   justify-content:center;
   overflow:hidden;
 }
-
+ 
 /* ── SCREENS ── */
 .screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;width:100%;padding:40px 24px;}
 .screen.active{display:flex;}
-
+ 
 /* ── SETUP ── */
 #sSetup{gap:40px;}
-
+ 
 .s-title{
   font-size:clamp(14px,2vw,18px);
   font-weight:400;
@@ -43,7 +43,7 @@ body{
   text-transform:uppercase;
   color:var(--muted);
 }
-
+ 
 .s-params{
   display:flex;flex-direction:column;gap:24px;
   width:100%;max-width:400px;
@@ -62,13 +62,13 @@ input[type=range]::-webkit-slider-thumb{
   background:var(--ink);cursor:pointer;
 }
 .r-val{font-size:13px;min-width:36px;text-align:right;color:var(--ink);}
-
+ 
 .s-cam-row{display:flex;align-items:center;gap:10px;}
 .cam-dot{width:7px;height:7px;border-radius:50%;background:#ddd;flex-shrink:0;}
 .cam-dot.ok{background:#22cc66;animation:blink 1.4s ease-in-out infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 .cam-txt{font-size:12px;color:var(--muted);letter-spacing:0.06em;}
-
+ 
 .btn-init{
   background:none;border:1px solid #ddd;border-radius:4px;
   padding:10px 24px;font-size:13px;letter-spacing:0.08em;
@@ -77,7 +77,7 @@ input[type=range]::-webkit-slider-thumb{
 }
 .btn-init:hover{border-color:var(--ink);}
 .btn-init:disabled{opacity:.35;cursor:not-allowed;}
-
+ 
 .btn-go{
   background:var(--ink);color:#fff;border:none;border-radius:4px;
   padding:14px 48px;font-size:14px;letter-spacing:0.12em;
@@ -86,19 +86,19 @@ input[type=range]::-webkit-slider-thumb{
 }
 .btn-go:hover{opacity:.8;}
 .btn-go:disabled{opacity:.25;cursor:not-allowed;}
-
+ 
 /* ── TEST ── */
 #sTest{
   padding:0;justify-content:stretch;
   position:relative;
 }
-
+ 
 .test-arena{
   width:100vw;height:100vh;
   display:flex;align-items:center;justify-content:center;
   position:relative;
 }
-
+ 
 /* progress bar top */
 .progress-bar{
   position:fixed;top:0;left:0;right:0;height:3px;
@@ -108,7 +108,7 @@ input[type=range]::-webkit-slider-thumb{
   height:100%;background:var(--ink);
   transition:width .1s linear;
 }
-
+ 
 /* timer tiny */
 .timer-hint{
   position:fixed;top:14px;left:50%;transform:translateX(-50%);
@@ -116,61 +116,30 @@ input[type=range]::-webkit-slider-thumb{
   color:#ccc;z-index:20;
   font-variant-numeric:tabular-nums;
 }
-
+ 
 /* size label */
 .size-label{
   position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
   font-size:11px;letter-spacing:0.14em;text-transform:uppercase;
   color:#ddd;z-index:20;
 }
-
+ 
 /* BALLS */
 .ball-container{
   position:absolute;
   display:flex;align-items:center;justify-content:center;
 }
-
-.ball{
-  border-radius:50%;
-  background:var(--ball);
-  position:relative;
-  overflow:hidden;
-  transition:width .4s cubic-bezier(.34,1.56,.64,1), height .4s cubic-bezier(.34,1.56,.64,1);
+ 
+.ball-canvas{
+  display:block;
   flex-shrink:0;
 }
-
-/* spinning: black & white rotating spokes */
-.ball.spin{
-  background:transparent;
-  border:none;
-}
-.ball.spin::before{
-  content:'';
-  position:absolute;inset:0;border-radius:50%;
-  background:repeating-conic-gradient(
-    #000000 0deg 40deg,
-    #ffffff 40deg 80deg
-  );
-  animation:rotateball 1s linear infinite;
-}
-@keyframes rotateball{to{transform:rotate(360deg);}}
-
-/* highlight gloss both balls */
-.ball::after{
-  content:'';
-  position:absolute;
-  top:12%;left:18%;
-  width:30%;height:24%;
-  background:rgba(255,255,255,.28);
-  border-radius:50%;
-  transform:rotate(-20deg);
-}
-
+ 
 /* gaze ring on spin side */
-.ball.spin.gazing{
-  box-shadow:0 0 0 6px rgba(17,17,17,.12), 0 0 28px rgba(17,17,17,.08);
+.ball-canvas.gazing{
+  filter:drop-shadow(0 0 8px rgba(17,17,17,.25));
 }
-
+ 
 /* cam mini */
 .cam-mini{
   position:fixed;bottom:16px;right:16px;
@@ -181,10 +150,10 @@ input[type=range]::-webkit-slider-thumb{
 }
 #videoMini{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block;}
 #canvasMini{position:absolute;top:0;left:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none;}
-
+ 
 /* ── RESULTS ── */
 #sResults{gap:48px;}
-
+ 
 .r-score{text-align:center;}
 .r-num{
   font-size:clamp(64px,12vw,120px);
@@ -194,14 +163,14 @@ input[type=range]::-webkit-slider-thumb{
   color:var(--ink);
 }
 .r-unit{font-size:clamp(16px,2.5vw,22px);color:var(--muted);font-weight:400;margin-top:6px;letter-spacing:0.1em;text-transform:uppercase;}
-
+ 
 .r-detail{
   display:flex;flex-direction:column;gap:8px;
   text-align:center;
 }
 .r-line{font-size:14px;color:var(--muted);letter-spacing:0.04em;}
 .r-line strong{color:var(--ink);font-weight:500;}
-
+ 
 .history-wrap{width:100%;max-width:380px;}
 .h-title{font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:#ccc;margin-bottom:10px;}
 .history-list{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;}
@@ -213,7 +182,7 @@ input[type=range]::-webkit-slider-thumb{
 }
 .h-date{color:var(--muted);}
 .h-score{font-weight:500;color:var(--ink);}
-
+ 
 .r-actions{display:flex;gap:12px;}
 .btn-again{
   background:var(--ink);color:#fff;border:none;border-radius:4px;
@@ -230,11 +199,11 @@ input[type=range]::-webkit-slider-thumb{
 </style>
 </head>
 <body>
-
+ 
 <!-- ══ SETUP ══ -->
 <div class="screen active" id="sSetup">
   <div class="s-title">Gaze Attention Test</div>
-
+ 
   <div style="display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;max-width:400px;">
     <div class="s-cam-row">
       <div class="cam-dot" id="camDot"></div>
@@ -249,59 +218,59 @@ input[type=range]::-webkit-slider-thumb{
   <input type="hidden" id="pOD" value="10">
   <input type="hidden" id="vOD" value="10">
 </div>
-
+ 
 <!-- ══ TEST ══ -->
 <div class="screen" id="sTest">
   <div class="progress-bar"><div class="progress-fill" id="progFill" style="width:100%"></div></div>
   <div class="timer-hint" id="timerHint">5.0</div>
-
+ 
   <div class="test-arena" id="arena">
     <div class="ball-container" id="bcLeft">
-      <div class="ball" id="bLeft"></div>
+      <canvas class="ball-canvas" id="bLeft"></canvas>
     </div>
     <div class="ball-container" id="bcRight">
-      <div class="ball" id="bRight"></div>
+      <canvas class="ball-canvas" id="bRight"></canvas>
     </div>
   </div>
-
+ 
   <div class="size-label" id="sizeLabel"></div>
-
+ 
   <div class="cam-mini">
     <video id="videoMini" autoplay playsinline muted></video>
     <canvas id="canvasMini"></canvas>
   </div>
 </div>
-
+ 
 <!-- ══ RESULTS ══ -->
 <div class="screen" id="sResults">
   <div class="r-score">
     <div class="r-num" id="rNum">—</div>
     <div class="r-unit">dernière taille perçue (cm)</div>
   </div>
-
+ 
   <div class="r-detail">
     <div class="r-line" id="rLevels">—</div>
     <div class="r-line" id="rVerdict">—</div>
   </div>
-
+ 
   <div class="history-wrap">
     <div class="h-title">Sessions</div>
     <div class="history-list" id="histList"></div>
   </div>
-
+ 
   <div class="r-actions">
     <button class="btn-again" onclick="goSetup()">Rejouer</button>
     <button class="btn-csv" onclick="exportCSV()">Export CSV</button>
   </div>
 </div>
-
+ 
 <script>
 // ── CONFIG ──
 const SEUIL = 0.03;
 const STEP_DURATION = 5000; // max ms per level
 const HOLD_CORRECT_MS = 600; // ms of correct gaze needed to advance
 const BALL_SIZES = [220, 180, 150, 120, 96, 76, 60, 46, 36, 28, 22, 16];
-
+ 
 // ── PX → CM conversion using a 1cm CSS reference element ──
 function getPxPerCm(){
   const el=document.createElement('div');
@@ -315,7 +284,7 @@ const PX_PER_CM=getPxPerCm();
 function pxToCm(px){return (px/PX_PER_CM).toFixed(1);}
 // side sequence: first always centered (both), then random L/R per step
 // We place spin ball on a random side each step
-
+ 
 // ── STATE ──
 let diamOG=10, diamOD=10;
 let faceMeshObj=null, cameraObj=null, camReady=false;
@@ -328,11 +297,11 @@ let correctHoldStart=null; // timestamp when correct gaze began
 let lastGoodSize=BALL_SIZES[0];
 let rafId=null;
 let history=JSON.parse(localStorage.getItem('gazeHist2')||'[]');
-
+ 
 // ── SETUP CONTROLS ──
 document.getElementById('pOG').addEventListener('input',e=>{diamOG=+e.target.value;document.getElementById('vOG').textContent=diamOG;});
 document.getElementById('pOD').addEventListener('input',e=>{diamOD=+e.target.value;document.getElementById('vOD').textContent=diamOD;});
-
+ 
 // ── CAMERA ──
 async function initCam(){
   document.getElementById('btnInit').disabled=true;
@@ -340,7 +309,7 @@ async function initCam(){
   const video=document.getElementById('videoMini');
   const canvas=document.getElementById('canvasMini');
   const ctx2=canvas.getContext('2d');
-
+ 
   faceMeshObj=new FaceMesh({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
   faceMeshObj.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:0.5,minTrackingConfidence:0.5});
   faceMeshObj.onResults(res=>{
@@ -350,7 +319,7 @@ async function initCam(){
     processIris(res,ctx2,canvas.width,canvas.height);
   });
   await faceMeshObj.initialize();
-
+ 
   cameraObj=new Camera(video,{
     onFrame:async()=>{if(faceMeshObj)await faceMeshObj.send({image:video});},
     width:320,height:240
@@ -362,11 +331,11 @@ async function initCam(){
   document.getElementById('btnInit').style.display='none';
   document.getElementById('btnGo').disabled=false;
 }
-
+ 
 // ── IRIS PROCESSING ──
 const IRIS_L=[474,475,476,477],IRIS_R=[469,470,471,472];
 const EL_OUT=263,EL_IN=362,ER_OUT=33,ER_IN=133;
-
+ 
 function cOf(lms,idx,w,h){let x=0,y=0;idx.forEach(i=>{x+=lms[i].x;y+=lms[i].y;});return{x:x/idx.length*w,y:y/idx.length*h};}
 function pOf(lms,i,w,h){return{x:lms[i].x*w,y:lms[i].y*h};}
 function hRatio(lms,iris,out,inn,w,h){
@@ -379,7 +348,7 @@ function drawCal(ctx,cx,cy,r,col){
   ctx.beginPath();ctx.moveTo(cx-r-3,cy);ctx.lineTo(cx+r+3,cy);ctx.moveTo(cx,cy-r-3);ctx.lineTo(cx,cy+r+3);
   ctx.strokeStyle=col+'55';ctx.lineWidth=1;ctx.stroke();
 }
-
+ 
 function processIris(res,ctx,w,h){
   if(!res.multiFaceLandmarks||!res.multiFaceLandmarks.length){gazeDir='none';return;}
   const lms=res.multiFaceLandmarks[0];
@@ -392,7 +361,7 @@ function processIris(res,ctx,w,h){
   else if(smoothH>0.5+SEUIL) gazeDir='left';
   else gazeDir='none';
 }
-
+ 
 // ── TEST ──
 function startTest(){
   if(!camReady)return;
@@ -404,40 +373,120 @@ function startTest(){
   testRunning=true;
   rafId=requestAnimationFrame(testLoop);
 }
-
+ 
+// ── CANVAS DRAWING ──
+let spinAngle=0;
+let spinRafId=null;
+const STROKE_RATIO=0.10; // stroke width = 10% of radius
+ 
+function drawRing(canvas, sz, isSpinning, angle){
+  canvas.width=sz; canvas.height=sz;
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,sz,sz);
+  const cx=sz/2, cy=sz/2;
+  const r=sz/2;
+  const sw=Math.max(3, r*STROKE_RATIO);
+  const ir=r-sw/2; // inner radius for stroke center
+ 
+  // White fill inside
+  ctx.beginPath();
+  ctx.arc(cx,cy,r,0,Math.PI*2);
+  ctx.fillStyle='#ffffff';
+  ctx.fill();
+ 
+  if(isSpinning){
+    // Draw full black ring first
+    ctx.beginPath();
+    ctx.arc(cx,cy,ir,0,Math.PI*2);
+    ctx.strokeStyle='#000000';
+    ctx.lineWidth=sw;
+    ctx.stroke();
+ 
+    // Draw white ray (sector) from center to edge covering ring portion
+    // Ray is one spoke: angular width = stroke / ir radians, min 18deg
+    const halfSpan=Math.max(Math.PI/10, (sw*0.6)/ir);
+    // Draw white filled sector (covers the ring arc)
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,r+1, angle-halfSpan, angle+halfSpan);
+    ctx.closePath();
+    ctx.fillStyle='#ffffff';
+    ctx.fill();
+ 
+    // Redraw partial arc: clip out the white zone from the black ring
+    // This is already handled — white sector sits on top
+ 
+    // Draw center white disc (hides ray base)
+    ctx.beginPath();
+    ctx.arc(cx,cy,ir-sw/2,0,Math.PI*2);
+    ctx.fillStyle='#ffffff';
+    ctx.fill();
+  } else {
+    // Static ring: just black stroke on white
+    ctx.beginPath();
+    ctx.arc(cx,cy,ir,0,Math.PI*2);
+    ctx.strokeStyle='#000000';
+    ctx.lineWidth=sw;
+    ctx.stroke();
+  }
+}
+ 
+function startSpinLoop(sz){
+  if(spinRafId) cancelAnimationFrame(spinRafId);
+  const spinId=spinSide==='left'?'bLeft':'bRight';
+  const canvas=document.getElementById(spinId);
+  const speed=2*Math.PI/1000; // 1 revolution per second
+  let last=null;
+  function loop(ts){
+    if(!testRunning) return;
+    if(last!==null) spinAngle+=(ts-last)*speed;
+    last=ts;
+    drawRing(canvas, sz, true, spinAngle);
+    spinRafId=requestAnimationFrame(loop);
+  }
+  spinRafId=requestAnimationFrame(loop);
+}
+ 
 function setupStep(){
   const sz=BALL_SIZES[stepIndex];
   // random side for spin ball (pure random each step)
   spinSide=Math.random()<0.5?'left':'right';
-
-  const bSpin=document.getElementById(spinSide==='left'?'bLeft':'bRight');
-  const bStill=document.getElementById(spinSide==='left'?'bRight':'bLeft');
-
+  spinAngle=0;
+ 
+  const spinId=spinSide==='left'?'bLeft':'bRight';
+  const stillId=spinSide==='left'?'bRight':'bLeft';
+  const bSpin=document.getElementById(spinId);
+  const bStill=document.getElementById(stillId);
+ 
   // position both in their half
   positionHalf('bcLeft','left',sz);
   positionHalf('bcRight','right',sz);
-
-  bSpin.className='ball spin';
-  bStill.className='ball';
-  bSpin.style.width=bSpin.style.height=sz+'px';
-  bStill.style.width=bStill.style.height=sz+'px';
-
+ 
+  // Draw still ring immediately
+  drawRing(bStill, sz, false, 0);
+  bStill.className='ball-canvas';
+ 
+  // Spin ball: will be drawn by loop
+  bSpin.width=sz; bSpin.height=sz;
+  bSpin.className='ball-canvas';
+ 
   document.getElementById('sizeLabel').textContent='Ø '+pxToCm(sz)+' cm';
   document.getElementById('progFill').style.transition='none';
   document.getElementById('progFill').style.width='100%';
   correctHoldStart=null;
   stepStartTime=Date.now();
-  // force reflow then animate
+ 
+  startSpinLoop(sz);
+ 
   setTimeout(()=>{
     document.getElementById('progFill').style.transition='width '+STEP_DURATION+'ms linear';
     document.getElementById('progFill').style.width='0%';
   },30);
 }
-
+ 
 function positionHalf(containerId, side, sz){
   const el=document.getElementById(containerId);
   const vw=window.innerWidth, vh=window.innerHeight;
-  // Place balls further into periphery: 20% and 80% of screen width
   const cx=(side==='left'? vw*0.20 : vw*0.80);
   const cy=vh/2;
   el.style.position='absolute';
@@ -446,24 +495,24 @@ function positionHalf(containerId, side, sz){
   el.style.width=sz+'px';
   el.style.height=sz+'px';
 }
-
+ 
 function testLoop(ts){
   if(!testRunning){return;}
-
+ 
   const now=Date.now();
   const elapsed=now-stepStartTime;
   const remaining=Math.max(0,(STEP_DURATION-elapsed)/1000);
-
+ 
   document.getElementById('timerHint').textContent=remaining.toFixed(1);
-
+ 
   // gaze on spin side?
   const gazingCorrect=(gazeDir===spinSide);
-
+ 
   // update glow
-  const bSpin=document.getElementById(spinSide==='left'?'bLeft':'bRight');
-  if(gazingCorrect) bSpin.classList.add('gazing');
-  else bSpin.classList.remove('gazing');
-
+  const bSpinEl=document.getElementById(spinSide==='left'?'bLeft':'bRight');
+  if(gazingCorrect) bSpinEl.classList.add('gazing');
+  else bSpinEl.classList.remove('gazing');
+ 
   if(gazingCorrect){
     if(correctHoldStart===null) correctHoldStart=now;
     const held=now-correctHoldStart;
@@ -483,24 +532,25 @@ function testLoop(ts){
   } else {
     correctHoldStart=null;
   }
-
+ 
   // timeout?
   if(elapsed>=STEP_DURATION){
     // failed this level
     finishTest(false);
     return;
   }
-
+ 
   rafId=requestAnimationFrame(testLoop);
 }
-
+ 
 function finishTest(completed){
   testRunning=false;
   cancelAnimationFrame(rafId);
-
+  if(spinRafId){cancelAnimationFrame(spinRafId);spinRafId=null;}
+ 
   const finalSize=completed?BALL_SIZES[BALL_SIZES.length-1]:lastGoodSize;
   const levelsReached=completed?BALL_SIZES.length:stepIndex;
-
+ 
   const session={
     date:new Date().toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),
     size:finalSize,
@@ -510,7 +560,7 @@ function finishTest(completed){
   history.unshift(session);
   if(history.length>30)history=history.slice(0,30);
   localStorage.setItem('gazeHist2',JSON.stringify(history));
-
+ 
   // fill result screen
   document.getElementById('rNum').textContent=pxToCm(finalSize)+' cm';
   document.getElementById('rLevels').innerHTML=`<strong>${levelsReached}</strong> niveau${levelsReached>1?'x':''} passé${levelsReached>1?'s':''}`;
@@ -521,11 +571,11 @@ function finishTest(completed){
   else verdict='Faible attraction détectée.';
   if(completed) verdict='Score parfait — tous les niveaux réussis !';
   document.getElementById('rVerdict').textContent=verdict;
-
+ 
   renderHistory();
   showScreen('sResults');
 }
-
+ 
 function renderHistory(){
   const list=document.getElementById('histList');
   if(!history.length){list.innerHTML='<div style="font-size:12px;color:#ccc;padding:8px 0">Aucune session</div>';return;}
@@ -536,13 +586,13 @@ function renderHistory(){
     </div>
   `).join('');
 }
-
+ 
 function goSetup(){
   testRunning=false;
   cancelAnimationFrame(rafId);
   showScreen('sSetup');
 }
-
+ 
 function exportCSV(){
   const rows=[['#','Date','Taille finale','Niveaux','Complété']];
   history.forEach((s,i)=>rows.push([history.length-i,s.date,pxToCm(s.size)+'cm',s.levels,s.completed?'oui':'non']));
@@ -552,12 +602,12 @@ function exportCSV(){
   a.download='gaze_test_'+Date.now()+'.csv';
   a.click();
 }
-
+ 
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
-
+ 
 renderHistory();
 </script>
 </body>
