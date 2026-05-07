@@ -119,9 +119,15 @@ input[type=range]::-webkit-slider-thumb{
  
 /* size label */
 .size-label{
-  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:36px;left:50%;transform:translateX(-50%);
   font-size:11px;letter-spacing:0.14em;text-transform:uppercase;
   color:#ddd;z-index:20;
+}
+.dist-label{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  font-size:11px;letter-spacing:0.14em;text-transform:uppercase;
+  color:#bbb;z-index:20;
+  white-space:nowrap;
 }
  
 /* BALLS */
@@ -234,6 +240,7 @@ input[type=range]::-webkit-slider-thumb{
   </div>
  
   <div class="size-label" id="sizeLabel"></div>
+  <div class="dist-label" id="distLabel"></div>
  
   <div class="cam-mini">
     <video id="videoMini" autoplay playsinline muted></video>
@@ -246,6 +253,7 @@ input[type=range]::-webkit-slider-thumb{
   <div class="r-score">
     <div class="r-num" id="rNum">—</div>
     <div class="r-unit">dixièmes d'acuité visuelle</div>
+    <div style="font-size:12px;color:#aaa;margin-top:6px;letter-spacing:0.06em;" id="rDist"></div>
   </div>
  
   <div class="r-detail">
@@ -315,6 +323,8 @@ function avLabel(av){ return av % 1 === 0 ? av.toFixed(0) : av.toString().replac
 let diamOG=10, diamOD=10;
 let faceMeshObj=null, cameraObj=null, camReady=false;
 let smoothH=0.5, gazeDir='none';
+let estimatedDistCm=80; // distance estimée en cm (défaut 80cm)
+const IPD_REF_MM=63;    // écart inter-pupillaire adulte moyen
 let testRunning=false;
 let stepIndex=0;        // current BALL_SIZES index
 let spinSide='left';    // current step's spin side
@@ -381,6 +391,19 @@ function processIris(res,ctx,w,h){
   const cL=cOf(lms,IRIS_L,w,h),cR=cOf(lms,IRIS_R,w,h);
   drawCal(ctx,cL.x,cL.y,diamOG/2,'#4af');
   drawCal(ctx,cR.x,cR.y,diamOD/2,'#f4a');
+ 
+  // ── Estimation distance par IPD apparent ──
+  // IPD en pixels dans l'image caméra 320px large
+  const ipdPx=Math.abs(cL.x-cR.x);
+  if(ipdPx>10){
+    // Résolution caméra en px/mm = (PX_PER_CM/10) mais caméra≠écran
+    // On utilise: dist_cm = (IPD_REF_MM * w) / (ipdPx * 25.4 / dpi_cam)
+    // Simplifié: facteur calibré empiriquement pour caméra 320px ~60° FOV
+    // dist_cm ≈ IPD_REF_MM * (w / ipdPx) * K  où K ≈ 0.12 pour FOV ~60°
+    const rawDist=(IPD_REF_MM*(w/ipdPx)*0.12);
+    estimatedDistCm=estimatedDistCm*0.9+rawDist*0.1; // lissage
+  }
+ 
   const avg=((hRatio(lms,IRIS_L,EL_OUT,EL_IN,w,h))+(hRatio(lms,IRIS_R,ER_OUT,ER_IN,w,h)))/2;
   smoothH=smoothH*0.75+avg*0.25;
   if(smoothH<0.5-SEUIL) gazeDir='right';
@@ -412,25 +435,34 @@ let spinRafId=null;
 const STROKE_RATIO=0.40; // Landolt C: e = H/5 = 2r/5 → sw = 0.4 × r
  
 function drawRing(canvas, sz, isSpinning, angle){
-  canvas.width=sz; canvas.height=sz;
+  const dpr=window.devicePixelRatio||1;
+  // CSS size
+  canvas.style.width=sz+'px';
+  canvas.style.height=sz+'px';
+  // Physical pixels for sharp rendering
+  canvas.width=Math.round(sz*dpr);
+  canvas.height=Math.round(sz*dpr);
   const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,sz,sz);
+ 
   const cx=sz/2, cy=sz/2;
   const r=sz/2;
-  // Landolt C: e = H/5, sw = e = H/5 = 2r/5
-  const sw=Math.max(3, r*STROKE_RATIO);
-  const ir=r-sw/2; // radius to stroke center
+  // Landolt C: e = H/5, stroke width = e = H/5 = 2r/5
+  const sw=Math.max(2, r*STROKE_RATIO);
+  const ir=r-sw/2; // arc radius (center of stroke)
+ 
+  // Draw full black ring — crisp antialiased stroke
+  ctx.beginPath();
+  ctx.arc(cx,cy,ir,0,Math.PI*2);
+  ctx.strokeStyle='#000000';
+  ctx.lineWidth=sw;
+  ctx.stroke();
  
   if(isSpinning){
-    // 1. Draw full black ring (stroke only — center stays transparent)
-    ctx.beginPath();
-    ctx.arc(cx,cy,ir,0,Math.PI*2);
-    ctx.strokeStyle='#000000';
-    ctx.lineWidth=sw;
-    ctx.stroke();
- 
-    // 2. Cut the gap (ouverture) using destination-out → truly transparent
-    const halfSpan=Math.max(Math.PI/10, (sw*0.6)/ir);
+    // Cut the gap (ouverture) using destination-out → truly transparent
+    // Gap angular width = ouverture / r = e / r = sw / ir
+    const halfSpan=sw/(2*ir);
     ctx.save();
     ctx.globalCompositeOperation='destination-out';
     ctx.beginPath();
@@ -440,14 +472,6 @@ function drawRing(canvas, sz, isSpinning, angle){
     ctx.fillStyle='rgba(0,0,0,1)';
     ctx.fill();
     ctx.restore();
- 
-  } else {
-    // Static ring: stroke only, center transparent
-    ctx.beginPath();
-    ctx.arc(cx,cy,ir,0,Math.PI*2);
-    ctx.strokeStyle='#000000';
-    ctx.lineWidth=sw;
-    ctx.stroke();
   }
 }
  
@@ -465,6 +489,19 @@ function startSpinLoop(sz){
     spinRafId=requestAnimationFrame(loop);
   }
   spinRafId=requestAnimationFrame(loop);
+}
+ 
+function updateDistLabel(level){
+  const dist=Math.round(estimatedDistCm);
+  // AV corrigée = AV_table × (distance_réelle / 80cm)
+  const avCorr=(level.av * estimatedDistCm/80);
+  // Arrondir à valeur standard la plus proche
+  const avStd=[0.3,0.4,0.5,0.6,0.8,1.0,1.3,1.6,2.0,2.5,3.2,4.0,5.0,6.3,7.0,8.0,9.0,10.0];
+  const avRound=avStd.reduce((a,b)=>Math.abs(b-avCorr)<Math.abs(a-avCorr)?b:a);
+  document.getElementById('sizeLabel').textContent=
+    'AV affichée '+avLabel(level.av)+'/10  ·  dist ~'+dist+' cm';
+  document.getElementById('distLabel').textContent=
+    'AV corrigée à 80 cm : '+avLabel(avRound)+'/10';
 }
  
 function setupStep(){
@@ -494,7 +531,7 @@ function setupStep(){
   bSpin.width=sz; bSpin.height=sz;
   bSpin.className='ball-canvas';
  
-  document.getElementById('sizeLabel').textContent='AV '+avLabel(level.av)+'/10';
+  updateDistLabel(level);
   document.getElementById('progFill').style.transition='none';
   document.getElementById('progFill').style.width='100%';
   correctHoldStart=null;
@@ -528,6 +565,10 @@ function testLoop(ts){
   const remaining=Math.max(0,(STEP_DURATION-elapsed)/1000);
  
   document.getElementById('timerHint').textContent=remaining.toFixed(1);
+  // Live update distance label
+  if(typeof LANDOLT_LEVELS!=='undefined' && stepIndex<LANDOLT_LEVELS.length){
+    updateDistLabel(LANDOLT_LEVELS[stepIndex]);
+  }
  
   // gaze on spin side?
   const gazingCorrect=(gazeDir===spinSide);
@@ -541,11 +582,11 @@ function testLoop(ts){
     if(correctHoldStart===null) correctHoldStart=now;
     const held=now-correctHoldStart;
     if(held>=HOLD_CORRECT_MS){
-      // SUCCESS — advance
-      lastGoodSize=LANDOLT_LEVELS[stepIndex];
+      // SUCCESS — record this level then advance
+      lastGoodSize=LANDOLT_LEVELS[stepIndex]; // save before increment
       stepIndex++;
       if(stepIndex>=LANDOLT_LEVELS.length){
-        // beat all levels
+        // beat all levels — lastGoodSize is already the final level
         finishTest(true);
         return;
       }
@@ -572,12 +613,16 @@ function finishTest(completed){
   cancelAnimationFrame(rafId);
   if(spinRafId){cancelAnimationFrame(spinRafId);spinRafId=null;}
  
-  const finalLevel=completed?LANDOLT_LEVELS[LANDOLT_LEVELS.length-1]:lastGoodSize;
+  const finalLevel=lastGoodSize; // always use lastGoodSize (updated before finishTest call)
   const levelsReached=completed?LANDOLT_LEVELS.length:stepIndex;
  
+  const distAtEnd=Math.round(estimatedDistCm);
+  const avCorrFinal=parseFloat((finalLevel.av*estimatedDistCm/80).toFixed(1));
   const session={
     date:new Date().toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),
     av:finalLevel.av,
+    avCorr:avCorrFinal,
+    dist:distAtEnd,
     levels:levelsReached,
     completed
   };
@@ -587,6 +632,7 @@ function finishTest(completed){
  
   // fill result screen
   document.getElementById('rNum').textContent=avLabel(finalLevel.av);
+  document.getElementById('rDist').textContent='à ~'+Math.round(estimatedDistCm)+' cm — AV corrigée 80 cm : '+avLabel(avCorrFinal)+'/10';
   document.getElementById('rLevels').innerHTML=`<strong>${levelsReached}</strong> niveau${levelsReached>1?'x':''} passé${levelsReached>1?'s':''}`;
   let verdict='';
   if(levelsReached>=10) verdict='Acuité attentionnelle excellente.';
@@ -606,7 +652,7 @@ function renderHistory(){
   list.innerHTML=history.map((s,i)=>`
     <div class="h-item">
       <span class="h-date">${s.date} · ${s.levels} niveau${s.levels>1?'x':''}</span>
-      <span class="h-score">AV ${avLabel(s.av)}/10</span>
+      <span class="h-score">AV ${avLabel(s.av)}/10${s.avCorr?` (→${s.avCorr} @80)`:''}</span>
     </div>
   `).join('');
 }
