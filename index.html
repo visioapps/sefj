@@ -8,332 +8,239 @@
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{--bg:#fff;--ink:#111;--muted:#aaa;--accent:#111;}
  
-:root{
-  --bg:#ffffff;
-  --ink:#111111;
-  --muted:#999;
-  --ball:#111111;
-  --spin-glow:rgba(17,17,17,0.12);
-}
- 
-body{
-  background:var(--bg);
-  color:var(--ink);
-  font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
-  min-height:100vh;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  overflow:hidden;
-}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+  font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;}
+body{display:flex;align-items:center;justify-content:center;}
  
 /* ── SCREENS ── */
-.screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;width:100%;padding:40px 24px;}
+.screen{display:none;position:fixed;inset:0;overflow:hidden;
+  flex-direction:column;align-items:center;justify-content:center;}
 .screen.active{display:flex;}
  
-/* ── SETUP ── */
-#sSetup{gap:40px;}
- 
-.s-title{
-  font-size:clamp(14px,2vw,18px);
-  font-weight:400;
-  letter-spacing:0.2em;
-  text-transform:uppercase;
-  color:var(--muted);
-}
- 
-.s-params{
-  display:flex;flex-direction:column;gap:24px;
-  width:100%;max-width:400px;
-}
-.s-row{display:flex;flex-direction:column;gap:8px;}
-.s-label{
-  font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);
-}
-.range-wrap{display:flex;align-items:center;gap:12px;}
-input[type=range]{
-  flex:1;-webkit-appearance:none;height:2px;
-  background:#ddd;border-radius:1px;outline:none;cursor:pointer;border:none;
-}
-input[type=range]::-webkit-slider-thumb{
-  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
-  background:var(--ink);cursor:pointer;
-}
-.r-val{font-size:13px;min-width:36px;text-align:right;color:var(--ink);}
- 
-.s-cam-row{display:flex;align-items:center;gap:10px;}
- 
-/* ── CALIBRATION RÈGLE ── */
-.cal-wrap{width:100%;max-width:400px;display:flex;flex-direction:column;gap:10px;}
-.cal-label{font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);}
-.cal-ruler-row{display:flex;align-items:center;gap:10px;}
+/* ══ ÉCRAN 1 : CALIBRATION ══ */
+#sCalib{gap:clamp(16px,3vh,36px);padding:clamp(20px,4vw,60px);}
+.calib-title{font-size:clamp(36px,8vw,80px);font-weight:300;letter-spacing:.25em;text-transform:uppercase;color:var(--ink);}
+.calib-step{font-size:clamp(10px,1.4vw,13px);letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-top:-6px;}
+.calib-body{display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;max-width:460px;}
+.calib-instruction{font-size:clamp(11px,1.5vw,13px);color:var(--muted);text-align:center;line-height:1.6;}
+.cal-ruler-row{display:flex;align-items:center;gap:12px;width:100%;}
 .cal-ruler{
-  height:28px;background:#111;border-radius:3px;cursor:ew-resize;
-  position:relative;flex-shrink:0;touch-action:none;
-  display:flex;align-items:center;justify-content:center;
+  height:clamp(24px,3.5vh,36px);background:#111;border-radius:4px;
+  cursor:ew-resize;position:relative;flex-shrink:0;touch-action:none;
+  display:flex;align-items:center;justify-content:center;min-width:60px;
 }
 .cal-ruler::after{
-  content:'';position:absolute;inset:0;
+  content:'';position:absolute;inset:0;border-radius:4px;
   background:repeating-linear-gradient(90deg,
-    transparent 0px, transparent 9px,
-    rgba(255,255,255,0.3) 9px, rgba(255,255,255,0.3) 10px
-  );
-  border-radius:3px;
+    transparent 0,transparent 9px,rgba(255,255,255,.25) 9px,rgba(255,255,255,.25) 10px);
 }
-.cal-ruler-txt{
-  position:absolute;color:#fff;font-size:10px;
-  letter-spacing:0.08em;z-index:1;pointer-events:none;
+.cal-ruler-txt{position:absolute;color:#fff;font-size:clamp(9px,1.2vw,11px);
+  letter-spacing:.08em;z-index:1;pointer-events:none;white-space:nowrap;}
+.cal-px-val{font-size:11px;color:#ccc;min-width:44px;flex-shrink:0;text-align:right;}
+.cal-ok-badge{
+  font-size:10px;color:#22cc66;letter-spacing:.1em;text-transform:uppercase;
+  display:none;padding:4px 10px;border:1px solid #22cc6644;border-radius:20px;
 }
-.cal-val{font-size:13px;color:var(--ink);min-width:40px;}
-.cal-note{font-size:10px;color:#bbb;letter-spacing:0.04em;line-height:1.5;}
-.cal-ok{font-size:10px;color:#22cc66;letter-spacing:0.06em;display:none;}
-.cam-dot{width:7px;height:7px;border-radius:50%;background:#ddd;flex-shrink:0;}
-.cam-dot.ok{background:#22cc66;animation:blink 1.4s ease-in-out infinite;}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-.cam-txt{font-size:12px;color:var(--muted);letter-spacing:0.06em;}
+.btn-validate{
+  background:var(--ink);color:#fff;border:none;border-radius:6px;
+  padding:clamp(10px,1.8vh,15px) clamp(28px,5vw,48px);
+  font-size:clamp(11px,1.5vw,14px);letter-spacing:.14em;text-transform:uppercase;
+  cursor:pointer;transition:opacity .15s;
+}
+.btn-validate:hover{opacity:.75;}
  
-.btn-init{
-  background:none;border:1px solid #ddd;border-radius:4px;
-  padding:10px 24px;font-size:13px;letter-spacing:0.08em;
-  text-transform:uppercase;cursor:pointer;color:var(--ink);
-  transition:border-color .15s;
-}
-.btn-init:hover{border-color:var(--ink);}
-.btn-init:disabled{opacity:.35;cursor:not-allowed;}
- 
-.btn-go{
-  background:var(--ink);color:#fff;border:none;border-radius:4px;
-  padding:14px 48px;font-size:14px;letter-spacing:0.12em;
-  text-transform:uppercase;cursor:pointer;
-  transition:opacity .15s;
-}
-.btn-go:hover{opacity:.8;}
-.btn-go:disabled{opacity:.25;cursor:not-allowed;}
- 
-/* ── TEST ── */
-#sTest{
-  padding:0;justify-content:stretch;
-  position:relative;
-}
- 
-.test-arena{
-  width:100vw;height:100vh;
-  display:flex;align-items:center;justify-content:center;
-  position:relative;
-}
- 
-/* progress bar top */
-.progress-bar{
-  position:fixed;top:0;left:0;right:0;height:3px;
-  background:#eee;z-index:20;
-}
-.progress-fill{
-  height:100%;background:var(--ink);
-  transition:width .1s linear;
-}
- 
-/* timer tiny */
-.timer-hint{
-  position:fixed;top:14px;left:50%;transform:translateX(-50%);
-  font-size:11px;letter-spacing:0.14em;text-transform:uppercase;
-  color:#ccc;z-index:20;
-  font-variant-numeric:tabular-nums;
-}
- 
-/* size label */
-.size-label{
-  position:fixed;bottom:36px;left:50%;transform:translateX(-50%);
-  font-size:11px;letter-spacing:0.14em;text-transform:uppercase;
-  color:#ddd;z-index:20;
-}
-.dist-label{
-  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
-  font-size:11px;letter-spacing:0.14em;text-transform:uppercase;
-  color:#bbb;z-index:20;
+/* ══ ÉCRAN 2 : CHOIX DE MODE ══ */
+#sMode{gap:clamp(20px,4vh,48px);padding:clamp(20px,4vw,60px);}
+.mode-title{font-size:clamp(36px,8vw,80px);font-weight:300;letter-spacing:.25em;text-transform:uppercase;color:var(--ink);}
+.mode-step{font-size:clamp(10px,1.4vw,13px);letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-top:-6px;}
+.mode-btns{display:flex;gap:clamp(10px,2vw,20px);flex-wrap:wrap;justify-content:center;}
+.btn-mode{
+  background:none;border:1.5px solid var(--ink);border-radius:8px;
+  padding:clamp(14px,2.5vh,22px) clamp(24px,4vw,44px);
+  font-size:clamp(12px,1.6vw,15px);letter-spacing:.14em;text-transform:uppercase;
+  cursor:pointer;color:var(--ink);transition:background .15s,color .15s;
   white-space:nowrap;
 }
- 
-/* BALLS */
-.ball-container{
-  position:absolute;
-  display:flex;align-items:center;justify-content:center;
+.btn-mode:hover{background:var(--ink);color:#fff;}
+.btn-mode.loading{opacity:.5;cursor:wait;}
+.btn-recalib{
+  background:none;border:none;font-size:clamp(9px,1.1vw,11px);
+  letter-spacing:.12em;text-transform:uppercase;color:#ccc;cursor:pointer;
+  padding:4px 8px;transition:color .15s;
 }
+.btn-recalib:hover{color:var(--ink);}
  
-.ball-canvas{
-  display:block;
-  flex-shrink:0;
-}
- 
-/* gaze ring on spin side */
-.ball-canvas.gazing{
-  filter:drop-shadow(0 0 8px rgba(17,17,17,.25));
-}
- 
-/* cam mini */
-.cam-mini{
-  position:fixed;bottom:16px;right:16px;
-  width:100px;height:75px;
-  border-radius:6px;overflow:hidden;
-  border:1px solid #eee;
-  background:#000;z-index:30;
-}
+/* ══ TEST ══ */
+#sTest{padding:0;position:relative;}
+.test-arena{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;position:relative;}
+.progress-bar{position:fixed;top:0;left:0;right:0;height:2px;background:#eee;z-index:20;}
+.progress-fill{height:100%;background:var(--ink);transition:width .1s linear;}
+.timer-hint{position:fixed;top:10px;left:50%;transform:translateX(-50%);
+  font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#ddd;z-index:20;font-variant-numeric:tabular-nums;}
+.size-label{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);
+  font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#ddd;z-index:20;white-space:nowrap;}
+.dist-label{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
+  font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#ccc;z-index:20;white-space:nowrap;}
+.ball-container{position:absolute;display:flex;align-items:center;justify-content:center;}
+.ball-canvas{display:block;flex-shrink:0;}
+.ball-canvas.gazing{filter:drop-shadow(0 0 10px rgba(17,17,17,.3));}
+.cam-mini{position:fixed;bottom:8px;right:8px;width:88px;height:66px;
+  border-radius:5px;overflow:hidden;border:1px solid #eee;background:#000;z-index:30;}
 #videoMini{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block;}
 #canvasMini{position:absolute;top:0;left:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none;}
  
-/* ── RESULTS ── */
-#sResults{gap:48px;}
- 
-.r-score{text-align:center;}
-.r-num{
-  font-size:clamp(64px,12vw,120px);
-  font-weight:300;
-  line-height:1;
-  letter-spacing:-0.04em;
-  color:var(--ink);
-}
-.r-unit{font-size:clamp(16px,2.5vw,22px);color:var(--muted);font-weight:400;margin-top:6px;letter-spacing:0.1em;text-transform:uppercase;}
- 
-.r-detail{
-  display:flex;flex-direction:column;gap:8px;
-  text-align:center;
-}
-.r-line{font-size:14px;color:var(--muted);letter-spacing:0.04em;}
-.r-line strong{color:var(--ink);font-weight:500;}
- 
-.history-wrap{width:100%;max-width:380px;}
-.h-title{font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:#ccc;margin-bottom:10px;}
-.history-list{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;}
-.h-item{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:8px 0;
-  border-bottom:1px solid #f0f0f0;
-  font-size:13px;
-}
-.h-date{color:var(--muted);}
-.h-score{font-weight:500;color:var(--ink);}
- 
-.r-actions{display:flex;gap:12px;}
-.btn-again{
-  background:var(--ink);color:#fff;border:none;border-radius:4px;
-  padding:13px 36px;font-size:13px;letter-spacing:0.1em;
-  text-transform:uppercase;cursor:pointer;transition:opacity .15s;
-}
-.btn-again:hover{opacity:.75;}
-.btn-csv{
-  background:none;border:1px solid #ddd;border-radius:4px;
-  padding:13px 28px;font-size:13px;letter-spacing:0.1em;
-  text-transform:uppercase;cursor:pointer;color:var(--ink);transition:border-color .15s;
-}
-.btn-csv:hover{border-color:var(--ink);}
- 
-/* ── PAUSE OVERLAY ── */
+/* ══ PAUSE OVERLAY ══ */
 #pauseOverlay{
-  display:none;
-  position:fixed;inset:0;z-index:200;
-  background:rgba(255,255,255,0.96);
-  flex-direction:column;align-items:center;justify-content:center;
-  gap:32px;
+  display:none;position:fixed;inset:0;z-index:200;
+  background:rgba(255,255,255,.96);
+  flex-direction:column;align-items:center;justify-content:center;gap:clamp(16px,3vh,32px);
 }
 #pauseOverlay.visible{display:flex;}
-.pause-title{
-  font-size:clamp(28px,6vw,52px);font-weight:300;
-  letter-spacing:0.15em;text-transform:uppercase;color:var(--ink);
-}
-.pause-actions{display:flex;flex-direction:column;gap:14px;align-items:center;width:100%;max-width:280px;}
-.btn-resume{
+.pause-title{font-size:clamp(28px,6vw,56px);font-weight:300;letter-spacing:.15em;text-transform:uppercase;}
+.overlay-btns{display:flex;flex-direction:column;gap:10px;width:clamp(160px,28vw,240px);}
+.btn-ov-primary{
   width:100%;background:var(--ink);color:#fff;border:none;border-radius:6px;
-  padding:16px 0;font-size:14px;letter-spacing:0.12em;text-transform:uppercase;
-  cursor:pointer;transition:opacity .15s;
+  padding:clamp(10px,1.8vh,14px) 0;font-size:clamp(11px,1.5vw,13px);
+  letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:opacity .15s;
 }
-.btn-resume:hover{opacity:.8;}
-.btn-restart{
+.btn-ov-primary:hover{opacity:.8;}
+.btn-ov-secondary{
   width:100%;background:none;border:1px solid #ccc;border-radius:6px;
-  padding:14px 0;font-size:13px;letter-spacing:0.1em;text-transform:uppercase;
-  cursor:pointer;color:var(--ink);transition:border-color .15s;
+  padding:clamp(9px,1.6vh,13px) 0;font-size:clamp(10px,1.3vw,12px);
+  letter-spacing:.1em;text-transform:uppercase;cursor:pointer;color:var(--ink);transition:border-color .15s;
 }
-.btn-restart:hover{border-color:var(--ink);}
+.btn-ov-secondary:hover{border-color:var(--ink);}
+.btn-ov-ghost{
+  width:100%;background:none;border:none;color:#bbb;
+  padding:6px 0;font-size:clamp(9px,1.1vw,11px);
+  letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:color .15s;
+}
+.btn-ov-ghost:hover{color:var(--ink);}
  
-/* ── RESULT MODAL ── */
+/* ══ RÉSULTAT MODAL ══ */
 #resultModal{
-  display:none;
-  position:fixed;inset:0;z-index:300;
-  background:rgba(255,255,255,0.97);
-  flex-direction:column;align-items:center;justify-content:center;
-  gap:36px;padding:40px 24px;
+  display:none;position:fixed;inset:0;z-index:300;
+  background:rgba(255,255,255,.97);
+  flex-direction:row;align-items:center;justify-content:center;
+  gap:clamp(30px,6vw,80px);padding:0 clamp(20px,5vw,60px);
 }
 #resultModal.visible{display:flex;}
-.rm-score{text-align:center;}
-.rm-num{
-  font-size:clamp(72px,14vw,130px);font-weight:300;
-  line-height:1;letter-spacing:-0.04em;color:var(--ink);
+.rm-left{display:flex;flex-direction:column;align-items:flex-start;gap:clamp(4px,1vh,12px);flex:0 0 auto;}
+.rm-right{display:flex;flex-direction:column;align-items:flex-start;gap:clamp(6px,1.2vh,14px);flex:1 1 auto;max-width:320px;}
+.rm-num{font-size:clamp(56px,11vw,110px);font-weight:300;line-height:1;letter-spacing:-.04em;}
+.rm-unit{font-size:clamp(12px,1.8vw,16px);color:var(--muted);letter-spacing:.08em;}
+.rm-dist-line{font-size:clamp(11px,1.5vw,14px);color:var(--ink);letter-spacing:.04em;margin-top:2px;}
+.rm-dist{font-size:clamp(12px,1.6vw,15px);color:var(--ink);letter-spacing:.04em;margin-top:4px;font-weight:400;}
+.rm-verdict{font-size:clamp(11px,1.4vw,13px);color:var(--muted);line-height:1.6;}
+.rm-hist-title{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#ccc;}
+.rm-h-list{display:flex;flex-direction:column;gap:3px;max-height:clamp(80px,20vh,160px);overflow-y:auto;width:100%;}
+.rm-h-item{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:11px;color:var(--muted);}
+.rm-h-item span:last-child{font-weight:500;color:var(--ink);}
+ 
+/* ── Mobile paysage ── */
+@media (max-height:520px) and (orientation:landscape){
+  .calib-title,.mode-title{font-size:clamp(22px,5vh,38px);}
+  .calib-step,.mode-step{margin-top:-4px;}
+  #sCalib,#sMode{gap:clamp(8px,1.5vh,16px);flex-direction:row;flex-wrap:wrap;
+    align-items:center;justify-content:center;padding:0 4vw;gap:4vw;}
+  .calib-body{max-width:340px;gap:8px;}
+  #sMode{flex-direction:row;}
+  .mode-btns{flex-direction:column;gap:8px;}
+  .btn-mode{padding:10px 22px;font-size:11px;}
+  #resultModal{gap:4vw;padding:0 3vw;}
+  .rm-num{font-size:clamp(40px,8vw,70px);}
+  .rm-h-list{max-height:clamp(50px,14vh,100px);}
+  .overlay-btns{width:180px;}
+  .size-label{bottom:18px;font-size:9px;}
+  .dist-label{bottom:4px;font-size:9px;}
+  .cam-mini{width:70px;height:52px;}
 }
-.rm-unit{font-size:clamp(13px,2vw,18px);color:var(--muted);letter-spacing:0.12em;text-transform:uppercase;margin-top:4px;}
-.rm-dist{font-size:12px;color:#aaa;margin-top:6px;letter-spacing:0.06em;}
-.rm-verdict{font-size:14px;color:var(--muted);letter-spacing:0.04em;text-align:center;max-width:300px;}
-.rm-actions{display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px;}
-.btn-newtest{
-  width:100%;background:var(--ink);color:#fff;border:none;border-radius:6px;
-  padding:16px 0;font-size:14px;letter-spacing:0.12em;text-transform:uppercase;
-  cursor:pointer;transition:opacity .15s;
+ 
+/* ── Réglette pleine largeur ── */
+.cal-track-wrap{width:100%;display:flex;flex-direction:column;gap:6px;}
+.cal-track{
+  width:100%;height:clamp(32px,5vh,48px);background:#f0f0f0;border-radius:8px;
+  position:relative;
 }
-.btn-newtest:hover{opacity:.8;}
-.btn-modal-csv{
-  width:100%;background:none;border:1px solid #ddd;border-radius:6px;
-  padding:14px 0;font-size:13px;letter-spacing:0.1em;text-transform:uppercase;
-  cursor:pointer;color:var(--ink);transition:border-color .15s;
+.cal-bar{
+  position:absolute;left:0;top:0;bottom:0;
+  background:#111;border-radius:8px 0 0 8px;
+  min-width:40px;display:flex;align-items:center;justify-content:center;
+  overflow:hidden;pointer-events:none;
 }
-.btn-modal-csv:hover{border-color:var(--ink);}
-.rm-history{width:100%;max-width:340px;}
-.rm-h-title{font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:#ccc;margin-bottom:8px;}
-.rm-h-list{display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;}
-.rm-h-item{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:12px;
+.cal-bar::after{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,
+    transparent 0,transparent 9px,rgba(255,255,255,.18) 9px,rgba(255,255,255,.18) 10px);
+}
+.cal-ruler-txt{color:#fff;font-size:11px;letter-spacing:.08em;pointer-events:none;white-space:nowrap;position:relative;z-index:1;}
+.cal-handle{
+  position:absolute;top:0;bottom:0;right:0;width:32px;
+  display:flex;align-items:center;justify-content:center;
+  background:#333;color:#fff;font-size:18px;letter-spacing:-3px;
+  border-radius:0 8px 8px 0;cursor:ew-resize;touch-action:none;
+  user-select:none;border-left:2px solid rgba(255,255,255,.15);
+}
+.cal-track-labels{display:flex;justify-content:space-between;align-items:center;padding:0 2px;}
+.cal-px-val{font-size:11px;color:#aaa;letter-spacing:.04em;}
+.cal-ok-badge{
+  font-size:10px;color:#22cc66;letter-spacing:.1em;text-transform:uppercase;
+  display:none;padding:4px 12px;border:1px solid #22cc6644;border-radius:20px;
 }
 </style>
 </head>
 <body>
  
-<!-- ══ SETUP ══ -->
-<div class="screen active" id="sSetup">
-  <div class="s-title">Mira</div>
+<!-- ══ ÉCRAN 1 : CALIBRATION ══ -->
+<div class="screen active" id="sCalib">
+  <div class="calib-title">Mira</div>
+  <div class="calib-step">Étape 1 — Calibration de l'écran</div>
+  <div class="calib-body">
+    <div class="calib-instruction">
+      Posez une règle sur l'écran et faites glisser la poignée<br>
+      jusqu'à ce que la barre mesure exactement <strong>5 cm</strong>.
+    </div>
  
-  <!-- Calibration règle -->
-  <div class="cal-wrap">
-    <div class="cal-label">Calibration écran — posez une règle et ajustez jusqu'à 5 cm</div>
-    <div class="cal-ruler-row">
-      <div class="cal-ruler" id="calRuler" style="width:200px;">
-        <span class="cal-ruler-txt" id="calRulerTxt">5 cm ?</span>
+    <!-- Encart pleine largeur -->
+    <div class="cal-track-wrap">
+      <div class="cal-track">
+        <div class="cal-bar" id="calRuler">
+          <span class="cal-ruler-txt" id="calRulerTxt">← 5 cm →</span>
+        </div>
+        <div class="cal-handle" id="calHandle">&#8942;</div>
       </div>
-      <span class="cal-val" id="calValTxt">—</span>
+      <div class="cal-track-labels">
+        <span style="color:#bbb;font-size:10px;letter-spacing:.06em;">0</span>
+        <span class="cal-px-val" id="calValTxt">—</span>
+      </div>
     </div>
-    <div class="cal-note">Glissez le bord droit de la barre pour qu'elle fasse exactement 5 cm sur votre règle physique.</div>
-    <div class="cal-ok" id="calOk">✓ Calibration sauvegardée</div>
-  </div>
  
-  <div style="display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;max-width:400px;">
-    <div class="s-cam-row">
-      <div class="cam-dot" id="camDot"></div>
-      <span class="cam-txt" id="camTxt">Caméra inactive</span>
-    </div>
-    <button class="btn-init" id="btnInit" onclick="initCam()">Activer la caméra</button>
-    <button class="btn-init" style="font-size:11px;color:#aaa;border-color:#eee;" onclick="enableClickMode()">Continuer sans caméra</button>
-    <button class="btn-go" id="btnGo" onclick="startTest()" disabled>Commencer</button>
+    <div class="cal-ok-badge" id="calOk">✓ Calibration enregistrée</div>
+    <button class="btn-validate" onclick="goMode()">Valider →</button>
   </div>
-  <!-- hidden inputs kept for code compatibility -->
-  <input type="hidden" id="pOG" value="10">
-  <input type="hidden" id="vOG" value="10">
-  <input type="hidden" id="pOD" value="10">
-  <input type="hidden" id="vOD" value="10">
+</div>
+ 
+<!-- ══ ÉCRAN 2 : CHOIX DE MODE ══ -->
+<div class="screen" id="sMode">
+  <div class="mode-title">Mira</div>
+  <div class="mode-step">Étape 2 — Choisir le mode</div>
+  <div class="mode-btns">
+    <button class="btn-mode" id="btnEyeTracker" onclick="startEyeTracker()">
+      Eye tracker
+    </button>
+    <button class="btn-mode" onclick="startClickMode()">
+      Mode clic
+    </button>
+  </div>
+  <button class="btn-recalib" onclick="showScreen('sCalib')">← Recalibrer</button>
 </div>
  
 <!-- ══ TEST ══ -->
 <div class="screen" id="sTest">
   <div class="progress-bar"><div class="progress-fill" id="progFill" style="width:100%"></div></div>
   <div class="timer-hint" id="timerHint">5.0</div>
- 
   <div class="test-arena" id="arena">
     <div class="ball-container" id="bcLeft">
       <canvas class="ball-canvas" id="bLeft"></canvas>
@@ -342,43 +249,46 @@ input[type=range]::-webkit-slider-thumb{
       <canvas class="ball-canvas" id="bRight"></canvas>
     </div>
   </div>
- 
   <div class="size-label" id="sizeLabel"></div>
   <div class="dist-label" id="distLabel"></div>
- 
   <div id="camMiniWrap" class="cam-mini">
     <video id="videoMini" autoplay playsinline muted></video>
     <canvas id="canvasMini"></canvas>
   </div>
 </div>
  
-<!-- ══ RESULTS (kept for compat) ══ -->
-<div class="screen" id="sResults" style="display:none!important;"></div>
+<!-- hidden inputs for code compat -->
+<input type="hidden" id="pOG" value="10">
+<input type="hidden" id="vOG" value="10">
+<input type="hidden" id="pOD" value="10">
+<input type="hidden" id="vOD" value="10">
  
 <!-- ══ PAUSE OVERLAY ══ -->
 <div id="pauseOverlay">
   <div class="pause-title">Pause</div>
-  <div class="pause-actions">
-    <button class="btn-resume" onclick="resumeTest()">▶ Continuer</button>
-    <button class="btn-restart" onclick="restartFromPause()">↺ Nouveau test</button>
+  <div class="overlay-btns">
+    <button class="btn-ov-primary" onclick="resumeTest()">▶ Continuer</button>
+    <button class="btn-ov-secondary" onclick="restartFromPause()">↺ Nouveau test</button>
+    <button class="btn-ov-ghost" onclick="recalibFromPause()">⚙ Recalibrer</button>
   </div>
 </div>
  
-<!-- ══ RESULT MODAL ══ -->
+<!-- ══ RÉSULTAT MODAL ══ -->
 <div id="resultModal">
-  <div class="rm-score">
+  <div class="rm-left">
     <div class="rm-num" id="rmNum">—</div>
-    <div class="rm-unit">dixièmes d'acuité visuelle</div>
+    <div class="rm-unit" id="rmUnit">à 80 cm</div>
     <div class="rm-dist" id="rmDist"></div>
+    <div class="rm-verdict" id="rmVerdict"></div>
   </div>
-  <div class="rm-verdict" id="rmVerdict"></div>
-  <div class="rm-history">
-    <div class="rm-h-title">Sessions précédentes</div>
+  <div class="rm-right">
+    <div class="rm-hist-title">Sessions</div>
     <div class="rm-h-list" id="rmHistList"></div>
-  </div>
-  <div class="rm-actions">
-    <button class="btn-newtest" onclick="newTestFromModal()">Nouveau test</button>
-    <button class="btn-modal-csv" onclick="exportCSV()">Export CSV</button>
+    <div class="overlay-btns" style="margin-top:10px;">
+      <button class="btn-ov-primary" onclick="newTestFromModal()">↺ Nouveau test</button>
+      <button class="btn-ov-secondary" onclick="exportCSV()">Export CSV</button>
+      <button class="btn-ov-ghost" onclick="recalibFromModal()">⚙ Recalibrer</button>
+    </div>
   </div>
 </div>
  
@@ -459,57 +369,75 @@ let lastGoodSize=LANDOLT_LEVELS[0];
 let rafId=null;
 let history=JSON.parse(localStorage.getItem('gazeHist2')||'[]');
  
-// ── SETUP CONTROLS ──
-document.getElementById('pOG').addEventListener('input',e=>{diamOG=+e.target.value;document.getElementById('vOG').textContent=diamOG;});
-document.getElementById('pOD').addEventListener('input',e=>{diamOD=+e.target.value;document.getElementById('vOD').textContent=diamOD;});
- 
 // ── MODE : camera ou click ──
-let clickMode = false; // true = pas de caméra, validation par clic sur le cercle tournant
+let clickMode = false;
+ 
+// ── NAVIGATION ENTRE ÉCRANS ──
+function goMode(){
+  renderHistory();
+  showScreen('sMode');
+}
+ 
+function recalibFromPause(){
+  document.getElementById('pauseOverlay').classList.remove('visible');
+  testRunning=false; testFinished=true; testPaused=false;
+  cancelAnimationFrame(rafId);
+  showScreen('sCalib');
+}
+ 
+function recalibFromModal(){
+  document.getElementById('resultModal').classList.remove('visible');
+  showScreen('sCalib');
+}
  
 // ── CAMERA ──
-async function initCam(){
-  document.getElementById('btnInit').disabled=true;
-  document.getElementById('camTxt').textContent='Initialisation…';
+async function initCamInternal(){
+  const video=document.getElementById('videoMini');
+  const canvas=document.getElementById('canvasMini');
+  const ctx2=canvas.getContext('2d');
+  faceMeshObj=new FaceMesh({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
+  faceMeshObj.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:0.5,minTrackingConfidence:0.5});
+  faceMeshObj.onResults(res=>{
+    canvas.width=video.videoWidth||320;
+    canvas.height=video.videoHeight||240;
+    ctx2.clearRect(0,0,canvas.width,canvas.height);
+    processIris(res,ctx2,canvas.width,canvas.height);
+  });
+  await faceMeshObj.initialize();
+  cameraObj=new Camera(video,{
+    onFrame:async()=>{if(faceMeshObj)await faceMeshObj.send({image:video});},
+    width:320,height:240
+  });
+  await cameraObj.start();
+}
+ 
+async function startEyeTracker(){
+  const btn=document.getElementById('btnEyeTracker');
+  btn.classList.add('loading');
+  btn.textContent='Initialisation…';
   try {
-    const video=document.getElementById('videoMini');
-    const canvas=document.getElementById('canvasMini');
-    const ctx2=canvas.getContext('2d');
- 
-    faceMeshObj=new FaceMesh({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
-    faceMeshObj.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:0.5,minTrackingConfidence:0.5});
-    faceMeshObj.onResults(res=>{
-      canvas.width=video.videoWidth||320;
-      canvas.height=video.videoHeight||240;
-      ctx2.clearRect(0,0,canvas.width,canvas.height);
-      processIris(res,ctx2,canvas.width,canvas.height);
-    });
-    await faceMeshObj.initialize();
- 
-    cameraObj=new Camera(video,{
-      onFrame:async()=>{if(faceMeshObj)await faceMeshObj.send({image:video});},
-      width:320,height:240
-    });
-    await cameraObj.start();
-    camReady=true;
-    document.getElementById('camDot').className='cam-dot ok';
-    document.getElementById('camTxt').textContent='Prêt';
-    document.getElementById('btnInit').style.display='none';
-    document.getElementById('btnGo').disabled=false;
-  } catch(err) {
-    // Caméra indisponible → mode clic
-    enableClickMode();
+    if(!camReady){
+      await initCamInternal();
+      camReady=true;
+    }
+    document.getElementById('camMiniWrap').style.display='block';
+    clickMode=false;
+    btn.classList.remove('loading');
+    btn.textContent='Eye tracker';
+    startTest();
+  } catch(err){
+    btn.classList.remove('loading');
+    btn.textContent='Eye tracker (indisponible)';
+    btn.style.opacity='.4';
+    btn.style.cursor='not-allowed';
   }
 }
  
-function enableClickMode(){
+function startClickMode(){
   clickMode=true;
-  camReady=true; // autorise le démarrage du test
-  document.getElementById('camDot').className='cam-dot';
-  document.getElementById('camDot').style.background='#f90';
-  document.getElementById('camTxt').textContent='Mode clic (pas de caméra)';
-  document.getElementById('btnInit').style.display='none';
+  camReady=true;
   document.getElementById('camMiniWrap').style.display='none';
-  document.getElementById('btnGo').disabled=false;
+  startTest();
 }
  
 // ── IRIS + TÊTE PROCESSING ──
@@ -583,7 +511,6 @@ function processIris(res,ctx,w,h){
  
 // ── TEST ──
 function startTest(){
-  if(!camReady)return; // camReady=true aussi en mode clic
   const maxSzPx=Math.min(window.innerWidth*0.38, window.innerHeight*0.85);
   stepIndex=0;
   for(let i=0;i<LANDOLT_LEVELS.length;i++){
@@ -680,7 +607,9 @@ function restartFromPause(){
   document.getElementById('pauseOverlay').classList.remove('visible');
   testPaused=false;
   testRunning=false;
-  startTest();
+  testFinished=true;
+  cancelAnimationFrame(rafId);
+  showScreen('sMode');
 }
  
 // ── CANVAS DRAWING ──
@@ -866,8 +795,12 @@ function finishTest(completed){
   localStorage.setItem('gazeHist2',JSON.stringify(history));
  
   // Remplir la modale de résultats
-  document.getElementById('rmNum').textContent=avLabel(finalLevel.av);
-  document.getElementById('rmDist').textContent='à ~'+distAtEnd+' cm  ·  AV corrigée 80 cm : '+avLabel(avCorrFinal)+'/10';
+  // Format : "M1,3" (M = dixièmes d'AV, valeur sans /10)
+  const avToM=(av)=>'M'+(av%1===0?av.toFixed(0):av.toString().replace('.',','));
+  document.getElementById('rmNum').textContent=avToM(finalLevel.av);
+  document.getElementById('rmUnit').textContent='à 80 cm';
+  document.getElementById('rmDist').textContent=
+    'Acuité corrigée '+avToM(avCorrFinal)+' à '+distAtEnd+' cm';
   let verdict='';
   if(completed) verdict='Score parfait — tous les niveaux réussis !';
   else if(levelsReached>=10) verdict='Acuité attentionnelle excellente.';
@@ -881,22 +814,26 @@ function finishTest(completed){
 }
  
 // ── CALIBRATION RÈGLE DRAGGABLE ──
-(function initCalibration(){
-  const ruler=document.getElementById('calRuler');
+// Initialisé après le chargement du DOM
+function initCalibration(){
+  const bar=document.getElementById('calRuler');   // la barre noire
+  const handle=document.getElementById('calHandle'); // la poignée
+  const track=bar?bar.parentElement:null;            // le fond gris
   const valTxt=document.getElementById('calValTxt');
   const rulerTxt=document.getElementById('calRulerTxt');
   const calOk=document.getElementById('calOk');
+  if(!bar||!handle||!track) return;
  
-  // Initialiser à la valeur CSS (37.8px/cm) ou sauvegardée
-  let rulerPx=PX_PER_CM*5; // pixels CSS pour 5cm selon calibration actuelle
-  const MIN=80, MAX=Math.min(window.innerWidth-40, 600);
-  rulerPx=Math.max(MIN,Math.min(MAX,rulerPx));
+  // MAX = largeur du track (pleine largeur du conteneur)
+  const getMax=()=>track.getBoundingClientRect().width || window.innerWidth-80;
+  const MIN=60;
+ 
+  let rulerPx=PX_PER_CM*5;
+  rulerPx=Math.max(MIN, Math.min(getMax(), rulerPx));
  
   function updateRuler(px){
-    rulerPx=Math.max(MIN,Math.min(MAX,px));
-    ruler.style.width=rulerPx+'px';
-    const cm=(rulerPx/PX_PER_CM).toFixed(1); // affiche cm CSS actuels
-    // Ce qu'on veut: l'utilisateur fait correspondre visuellement à 5cm réels
+    rulerPx=Math.max(MIN, Math.min(getMax(), px));
+    bar.style.width=rulerPx+'px';
     rulerTxt.textContent='← 5 cm →';
     valTxt.textContent=Math.round(rulerPx)+'px';
   }
@@ -919,22 +856,22 @@ function finishTest(completed){
   function onEnd(){
     if(!dragging)return;
     dragging=false;
-    // Appliquer la calibration : rulerPx CSS = 5cm physiques
     applyCalibration(rulerPx);
     calOk.style.display='block';
     setTimeout(()=>calOk.style.display='none',2000);
   }
  
-  ruler.addEventListener('mousedown',onStart);
-  ruler.addEventListener('touchstart',onStart,{passive:false});
+  handle.addEventListener('mousedown',onStart);
+  handle.addEventListener('touchstart',onStart,{passive:false});
   window.addEventListener('mousemove',onMove);
   window.addEventListener('touchmove',onMove,{passive:false});
   window.addEventListener('mouseup',onEnd);
   window.addEventListener('touchend',onEnd);
-})();
+}
+ 
+document.addEventListener('DOMContentLoaded', initCalibration);
  
 function renderHistory(){
-  // Rend l'historique dans la modale résultats
   const list=document.getElementById('rmHistList');
   if(!list) return;
   if(!history.length){
@@ -944,21 +881,14 @@ function renderHistory(){
   list.innerHTML=history.slice(0,8).map(s=>`
     <div class="rm-h-item">
       <span style="color:var(--muted)">${s.date} · ${s.levels} niv.</span>
-      <span style="font-weight:500">AV ${avLabel(s.av)}/10${s.avCorr?' (→'+s.avCorr+')':''}</span>
+      <span style="font-weight:500">M${avLabel(s.av)}${s.avCorr?' → M'+s.avCorr+' @'+s.dist+'cm':''}</span>
     </div>
   `).join('');
 }
  
-function goSetup(){
-  testRunning=false;
-  testFinished=true;
-  cancelAnimationFrame(rafId);
-  showScreen('sSetup');
-}
- 
 function newTestFromModal(){
   document.getElementById('resultModal').classList.remove('visible');
-  startTest();
+  showScreen('sMode');
 }
  
 function exportCSV(){
@@ -976,7 +906,6 @@ function showScreen(id){
   document.getElementById(id).classList.add('active');
 }
  
-// renderHistory appelé uniquement quand la modale est ouverte
 </script>
 </body>
 </html>
