@@ -275,6 +275,16 @@ body{display:flex;align-items:center;justify-content:center;}
   </div>
 </div>
  
+<!-- ══ CHOIX ŒIL (mode clic) ══ -->
+<div id="eyePicker" style="display:none;position:fixed;inset:0;z-index:350;background:rgba(255,255,255,.97);flex-direction:column;align-items:center;justify-content:center;gap:clamp(16px,3vh,32px);">
+  <div style="font-size:clamp(14px,2vw,18px);letter-spacing:.15em;text-transform:uppercase;color:var(--muted);">Quel œil était testé ?</div>
+  <div style="display:flex;gap:clamp(10px,2vw,20px);flex-wrap:wrap;justify-content:center;">
+    <button class="btn-mode" onclick="pickEye('od')">Œil droit (OD)</button>
+    <button class="btn-mode" onclick="pickEye('og')">Œil gauche (OG)</button>
+    <button class="btn-mode" onclick="pickEye('bino')">Binoculaire</button>
+  </div>
+</div>
+ 
 <!-- ══ RÉSULTAT MODAL ══ -->
 <div id="resultModal">
   <div class="rm-left">
@@ -381,6 +391,32 @@ let detectedEye = 'bino';  // 'bino' | 'od' | 'og' | 'click' — mis à jour par
 const eyeLabel=(e)=>({bino:'Bino',od:'OD',og:'OG',click:'Clic'}[e]||e);
  
 // ── NAVIGATION ENTRE ÉCRANS ──
+// ── Variables temporaires pour la session en cours ──
+let pendingSession=null;
+let pendingAvToM=null;
+let pendingFinalLevel=null;
+let pendingAvCorrFinal=0;
+let pendingDistAtEnd=0;
+let pendingLevelsReached=0;
+let pendingCompleted=false;
+ 
+function pickEye(eye){
+  document.getElementById('eyePicker').style.display='none';
+  saveAndShowResult(eye);
+}
+ 
+function saveAndShowResult(eye){
+  if(!pendingSession) return;
+  pendingSession.eye=eye;
+  document.getElementById('rmEye').textContent=eyeLabel(eye);
+  history.unshift(pendingSession);
+  if(history.length>30) history=history.slice(0,30);
+  localStorage.setItem('gazeHist2',JSON.stringify(history));
+  renderHistory();
+  setTimeout(()=>document.getElementById('resultModal').classList.add('visible'), 0);
+  pendingSession=null;
+}
+ 
 function goMode(){
   renderHistory();
   showScreen('sMode');
@@ -1016,7 +1052,11 @@ function finishTest(completed){
  
   const distAtEnd=Math.round(estimatedDistCm);
   const avCorrFinal=parseFloat((finalLevel.av*estimatedDistCm/80).toFixed(1));
-  const session={
+  const eyeFinal = clickMode ? 'pending' : detectedEye; // 'pending' = à demander
+  const avToM=(av)=>'M'+(av%1===0?av.toFixed(0):av.toString().replace('.',','));
+ 
+  // Préparer le contenu de la modale (sans l'œil pour l'instant)
+  pendingSession={
     date:new Date().toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),
     av:finalLevel.av,
     avCorr:avCorrFinal,
@@ -1025,19 +1065,13 @@ function finishTest(completed){
     completed,
     eye:eyeFinal
   };
-  history.unshift(session);
-  if(history.length>30)history=history.slice(0,30);
-  localStorage.setItem('gazeHist2',JSON.stringify(history));
+  pendingAvToM=avToM;
+  pendingFinalLevel=finalLevel;
+  pendingAvCorrFinal=avCorrFinal;
+  pendingDistAtEnd=distAtEnd;
+  pendingLevelsReached=levelsReached;
+  pendingCompleted=completed;
  
-  // Remplir la modale de résultats
-  // Format : "M1,3" (M = dixièmes d'AV, valeur sans /10)
-  const avToM=(av)=>'M'+(av%1===0?av.toFixed(0):av.toString().replace('.',','));
-  document.getElementById('rmNum').textContent=avToM(finalLevel.av);
-  document.getElementById('rmUnit').textContent='à 80 cm';
-  const eyeLbl=eyeLabel(eyeFinal);
-  document.getElementById('rmDist').textContent=
-    'Acuité corrigée '+avToM(avCorrFinal)+' à '+distAtEnd+' cm';
-  document.getElementById('rmEye').textContent=eyeLbl;
   let verdict='';
   if(completed) verdict='Score parfait — tous les niveaux réussis !';
   else if(levelsReached>=10) verdict='Acuité attentionnelle excellente.';
@@ -1045,9 +1079,17 @@ function finishTest(completed){
   else if(levelsReached>=4) verdict='Attraction modérée — sensible aux grands stimuli.';
   else verdict='Faible attraction détectée.';
   document.getElementById('rmVerdict').textContent=verdict;
-  // Historique dans la modale
-  renderHistory();
-  setTimeout(()=>document.getElementById('resultModal').classList.add('visible'), 0);
+  document.getElementById('rmNum').textContent=avToM(finalLevel.av);
+  document.getElementById('rmUnit').textContent='à 80 cm';
+  document.getElementById('rmDist').textContent='Acuité corrigée '+avToM(avCorrFinal)+' à '+distAtEnd+' cm';
+ 
+  if(clickMode){
+    // Mode clic : afficher le sélecteur d'œil avant la modale résultat
+    setTimeout(()=>{ document.getElementById('eyePicker').style.display='flex'; }, 0);
+  } else {
+    // Mode caméra : œil détecté automatiquement
+    saveAndShowResult(eyeFinal);
+  }
 }
  
 // ── CALIBRATION RÈGLE DRAGGABLE ──
