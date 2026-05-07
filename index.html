@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gaze Test</title>
+<title>Mira</title>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <style>
@@ -298,18 +298,18 @@ input[type=range]::-webkit-slider-thumb{
  
 <!-- ══ SETUP ══ -->
 <div class="screen active" id="sSetup">
-  <div class="s-title">Gaze Attention Test</div>
+  <div class="s-title">Mira</div>
  
   <!-- Calibration règle -->
   <div class="cal-wrap">
-    <div class="cal-label">Calibration écran — posez une règle et ajustez jusqu'à 10 cm</div>
+    <div class="cal-label">Calibration écran — posez une règle et ajustez jusqu'à 5 cm</div>
     <div class="cal-ruler-row">
       <div class="cal-ruler" id="calRuler" style="width:200px;">
-        <span class="cal-ruler-txt" id="calRulerTxt">10 cm ?</span>
+        <span class="cal-ruler-txt" id="calRulerTxt">5 cm ?</span>
       </div>
       <span class="cal-val" id="calValTxt">—</span>
     </div>
-    <div class="cal-note">Glissez le bord droit de la barre pour qu'elle fasse exactement 10 cm sur votre règle physique.</div>
+    <div class="cal-note">Glissez le bord droit de la barre pour qu'elle fasse exactement 5 cm sur votre règle physique.</div>
     <div class="cal-ok" id="calOk">✓ Calibration sauvegardée</div>
   </div>
  
@@ -319,6 +319,7 @@ input[type=range]::-webkit-slider-thumb{
       <span class="cam-txt" id="camTxt">Caméra inactive</span>
     </div>
     <button class="btn-init" id="btnInit" onclick="initCam()">Activer la caméra</button>
+    <button class="btn-init" style="font-size:11px;color:#aaa;border-color:#eee;" onclick="enableClickMode()">Continuer sans caméra</button>
     <button class="btn-go" id="btnGo" onclick="startTest()" disabled>Commencer</button>
   </div>
   <!-- hidden inputs kept for code compatibility -->
@@ -345,7 +346,7 @@ input[type=range]::-webkit-slider-thumb{
   <div class="size-label" id="sizeLabel"></div>
   <div class="dist-label" id="distLabel"></div>
  
-  <div class="cam-mini">
+  <div id="camMiniWrap" class="cam-mini">
     <video id="videoMini" autoplay playsinline muted></video>
     <canvas id="canvasMini"></canvas>
   </div>
@@ -432,8 +433,8 @@ function mmToPx(mm){ return Math.round(mm * PX_PER_MM); }
 function avLabel(av){ return av % 1 === 0 ? av.toFixed(0) : av.toString().replace('.',','); }
  
 function applyCalibration(rulerPx){
-  // rulerPx = nb pixels CSS pour 10cm mesurés sur la règle à l'écran
-  PX_PER_CM = rulerPx / 10;
+  // rulerPx = nb pixels CSS pour 5cm mesurés sur la règle à l'écran
+  PX_PER_CM = rulerPx / 5;
   PX_PER_MM = PX_PER_CM / 10;
   try { localStorage.setItem('pxPerCm', PX_PER_CM); } catch(e){}
 }
@@ -462,40 +463,52 @@ let history=JSON.parse(localStorage.getItem('gazeHist2')||'[]');
 document.getElementById('pOG').addEventListener('input',e=>{diamOG=+e.target.value;document.getElementById('vOG').textContent=diamOG;});
 document.getElementById('pOD').addEventListener('input',e=>{diamOD=+e.target.value;document.getElementById('vOD').textContent=diamOD;});
  
+// ── MODE : camera ou click ──
+let clickMode = false; // true = pas de caméra, validation par clic sur le cercle tournant
+ 
 // ── CAMERA ──
 async function initCam(){
   document.getElementById('btnInit').disabled=true;
   document.getElementById('camTxt').textContent='Initialisation…';
-  const video=document.getElementById('videoMini');
-  const canvas=document.getElementById('canvasMini');
-  const ctx2=canvas.getContext('2d');
+  try {
+    const video=document.getElementById('videoMini');
+    const canvas=document.getElementById('canvasMini');
+    const ctx2=canvas.getContext('2d');
  
-  faceMeshObj=new FaceMesh({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
-  faceMeshObj.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:0.5,minTrackingConfidence:0.5});
-  faceMeshObj.onResults(res=>{
-    canvas.width=video.videoWidth||320;
-    canvas.height=video.videoHeight||240;
-    ctx2.clearRect(0,0,canvas.width,canvas.height);
-    processIris(res,ctx2,canvas.width,canvas.height);
-  });
-  await faceMeshObj.initialize();
+    faceMeshObj=new FaceMesh({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
+    faceMeshObj.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:0.5,minTrackingConfidence:0.5});
+    faceMeshObj.onResults(res=>{
+      canvas.width=video.videoWidth||320;
+      canvas.height=video.videoHeight||240;
+      ctx2.clearRect(0,0,canvas.width,canvas.height);
+      processIris(res,ctx2,canvas.width,canvas.height);
+    });
+    await faceMeshObj.initialize();
  
-  cameraObj=new Camera(video,{
-    onFrame:async()=>{if(faceMeshObj)await faceMeshObj.send({image:video});},
-    width:320,height:240
-  });
-  await cameraObj.start();
-  camReady=true;
-  document.getElementById('camDot').className='cam-dot ok';
-  document.getElementById('camTxt').textContent='Prêt';
-  // Afficher la direction en temps réel dans la mini-cam
-  setInterval(()=>{
-    if(!testRunning) return;
-    const indicator = gazeDir==='left'?'← ' : gazeDir==='right'?' →' : '·';
-    const src = headDir!=='none'&&gazeDir===headDir ? '(tête)' : gazeDir!=='none'?'(iris)':'';
-    document.getElementById('camTxt'); // pas d'affichage hors test
-  },100);
+    cameraObj=new Camera(video,{
+      onFrame:async()=>{if(faceMeshObj)await faceMeshObj.send({image:video});},
+      width:320,height:240
+    });
+    await cameraObj.start();
+    camReady=true;
+    document.getElementById('camDot').className='cam-dot ok';
+    document.getElementById('camTxt').textContent='Prêt';
+    document.getElementById('btnInit').style.display='none';
+    document.getElementById('btnGo').disabled=false;
+  } catch(err) {
+    // Caméra indisponible → mode clic
+    enableClickMode();
+  }
+}
+ 
+function enableClickMode(){
+  clickMode=true;
+  camReady=true; // autorise le démarrage du test
+  document.getElementById('camDot').className='cam-dot';
+  document.getElementById('camDot').style.background='#f90';
+  document.getElementById('camTxt').textContent='Mode clic (pas de caméra)';
   document.getElementById('btnInit').style.display='none';
+  document.getElementById('camMiniWrap').style.display='none';
   document.getElementById('btnGo').disabled=false;
 }
  
@@ -570,7 +583,7 @@ function processIris(res,ctx,w,h){
  
 // ── TEST ──
 function startTest(){
-  if(!camReady)return;
+  if(!camReady)return; // camReady=true aussi en mode clic
   const maxSzPx=Math.min(window.innerWidth*0.38, window.innerHeight*0.85);
   stepIndex=0;
   for(let i=0;i<LANDOLT_LEVELS.length;i++){
@@ -585,8 +598,44 @@ function startTest(){
   spinAngle=0;
   cancelAnimationFrame(rafId);
   showScreen('sTest');
-  // Tap anywhere on arena = pause
-  document.getElementById('arena').onclick=()=>pauseTest();
+  // Gestion des clics sur l'arena
+  const arena=document.getElementById('arena');
+  if(clickMode){
+    // Mode clic : clic sur le cercle tournant = valider le niveau
+    // Double-tap (2 clics rapides) = pause
+    let lastClickTime=0;
+    let pendingPause=null;
+    arena.onclick=(e)=>{
+      if(!testRunning||testFinished) return;
+      const now=Date.now();
+      const dt=now-lastClickTime;
+      lastClickTime=now;
+      if(dt<400){
+        // Double-tap → pause
+        if(pendingPause) clearTimeout(pendingPause);
+        pendingPause=null;
+        pauseTest();
+        return;
+      }
+      // Simple clic : vérifier si on a cliqué sur le canvas tournant
+      pendingPause=setTimeout(()=>{
+        pendingPause=null;
+        const spinId=spinSide==='left'?'bLeft':'bRight';
+        const spinCanvas=document.getElementById(spinId);
+        const rect=spinCanvas.getBoundingClientRect();
+        const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+        const dist=Math.hypot(e.clientX-cx, e.clientY-cy);
+        if(dist<=rect.width/2){
+          // Clic sur le bon cercle → validation immédiate
+          gazeDir=spinSide;
+          correctHoldStart=Date.now()-HOLD_CORRECT_MS; // forcer succès au prochain frame
+        }
+      }, 200);
+    };
+  } else {
+    // Mode caméra : simple tap = pause
+    arena.onclick=()=>pauseTest();
+  }
   setupStep();
   rafId=requestAnimationFrame(masterLoop);
 }
@@ -776,6 +825,7 @@ function masterLoop(ts){
       }
       lastRafTs=null;
       spinAngle=0;
+      if(clickMode) gazeDir='none'; // reset en mode clic après validation
       setupStep();
       rafId=requestAnimationFrame(masterLoop);
       return; // repart proprement après setupStep
@@ -838,7 +888,7 @@ function finishTest(completed){
   const calOk=document.getElementById('calOk');
  
   // Initialiser à la valeur CSS (37.8px/cm) ou sauvegardée
-  let rulerPx=PX_PER_CM*10; // pixels CSS pour 10cm selon calibration actuelle
+  let rulerPx=PX_PER_CM*5; // pixels CSS pour 5cm selon calibration actuelle
   const MIN=80, MAX=Math.min(window.innerWidth-40, 600);
   rulerPx=Math.max(MIN,Math.min(MAX,rulerPx));
  
@@ -846,8 +896,8 @@ function finishTest(completed){
     rulerPx=Math.max(MIN,Math.min(MAX,px));
     ruler.style.width=rulerPx+'px';
     const cm=(rulerPx/PX_PER_CM).toFixed(1); // affiche cm CSS actuels
-    // Ce qu'on veut: l'utilisateur fait correspondre visuellement à 10cm réels
-    rulerTxt.textContent='← 10 cm →';
+    // Ce qu'on veut: l'utilisateur fait correspondre visuellement à 5cm réels
+    rulerTxt.textContent='← 5 cm →';
     valTxt.textContent=Math.round(rulerPx)+'px';
   }
   updateRuler(rulerPx);
@@ -869,7 +919,7 @@ function finishTest(completed){
   function onEnd(){
     if(!dragging)return;
     dragging=false;
-    // Appliquer la calibration : rulerPx CSS = 10cm physiques
+    // Appliquer la calibration : rulerPx CSS = 5cm physiques
     applyCalibration(rulerPx);
     calOk.style.display='block';
     setTimeout(()=>calOk.style.display='none',2000);
@@ -930,4 +980,3 @@ function showScreen(id){
 </script>
 </body>
 </html>
- 
