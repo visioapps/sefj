@@ -84,7 +84,7 @@ body{display:flex;align-items:center;justify-content:center;}
 .dist-label{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
   font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#ccc;z-index:20;white-space:nowrap;}
 .ball-container{position:absolute;display:flex;align-items:center;justify-content:center;}
-.ball-canvas{display:block;flex-shrink:0;}
+.ball-canvas{display:block;flex-shrink:0;transition:opacity .25s ease;}
 .ball-canvas.gazing{filter:drop-shadow(0 0 10px rgba(17,17,17,.3));}
 .cam-mini{position:fixed;bottom:8px;right:8px;width:88px;height:66px;
   border-radius:5px;overflow:hidden;border:1px solid #eee;background:#000;z-index:30;}
@@ -248,6 +248,8 @@ body{display:flex;align-items:center;justify-content:center;}
     <div class="ball-container" id="bcRight">
       <canvas class="ball-canvas" id="bRight"></canvas>
     </div>
+    <!-- Étoile de transition entre niveaux -->
+    <canvas id="starCanvas" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;pointer-events:none;"></canvas>
   </div>
   <div class="size-label" id="sizeLabel"></div>
   <div class="dist-label" id="distLabel"></div>
@@ -276,7 +278,10 @@ body{display:flex;align-items:center;justify-content:center;}
 <!-- ══ RÉSULTAT MODAL ══ -->
 <div id="resultModal">
   <div class="rm-left">
-    <div class="rm-num" id="rmNum">—</div>
+    <div style="display:flex;align-items:baseline;gap:10px;">
+      <div class="rm-num" id="rmNum">—</div>
+      <div id="rmEye" style="font-size:clamp(14px,2.5vw,22px);font-weight:300;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;">—</div>
+    </div>
     <div class="rm-unit" id="rmUnit">à 80 cm</div>
     <div class="rm-dist" id="rmDist"></div>
     <div class="rm-verdict" id="rmVerdict"></div>
@@ -369,8 +374,11 @@ let lastGoodSize=LANDOLT_LEVELS[0];
 let rafId=null;
 let history=JSON.parse(localStorage.getItem('gazeHist2')||'[]');
  
-// ── MODE : camera ou click ──
+// ── MODE : camera ou click + œil testé ──
 let clickMode = false;
+let eyeMode = 'auto';      // 'auto' | 'click'
+let detectedEye = 'bino';  // 'bino' | 'od' | 'og' | 'click' — mis à jour par processIris
+const eyeLabel=(e)=>({bino:'Bino',od:'OD',og:'OG',click:'Clic'}[e]||e);
  
 // ── NAVIGATION ENTRE ÉCRANS ──
 function goMode(){
@@ -412,6 +420,7 @@ async function initCamInternal(){
 }
  
 async function startEyeTracker(){
+  eyeMode='auto'; detectedEye='bino';
   const btn=document.getElementById('btnEyeTracker');
   btn.classList.add('loading');
   btn.textContent='Initialisation…';
@@ -434,6 +443,7 @@ async function startEyeTracker(){
 }
  
 function startClickMode(){
+  eyeMode='click'; detectedEye='click';
   clickMode=true;
   camReady=true;
   document.getElementById('camMiniWrap').style.display='none';
@@ -502,6 +512,24 @@ function processIris(res,ctx,w,h){
   if(smoothHead>HEAD_YAW_SEUIL) headDir='left';
   else if(smoothHead<-HEAD_YAW_SEUIL) headDir='right';
   else headDir='none';
+ 
+  // ── Détection œil ouvert/fermé (hauteur palpébrale) ──
+  // Paupières : OG sup=386 inf=374 / OD sup=159 inf=145
+  const eyelidOG=Math.abs(lms[386].y-lms[374].y);
+  const eyelidOD=Math.abs(lms[159].y-lms[145].y);
+  const eyeRatio=(eyelidOG>0.001)?eyelidOD/eyelidOG:1;
+  if(eyeRatio<0.45)     detectedEye='od';   // OD ouvert, OG fermé
+  else if(eyeRatio>2.2) detectedEye='og';   // OG ouvert, OD fermé
+  else                  detectedEye='bino';
+ 
+  // ── Iris : utiliser seulement l'œil ouvert si mono détecté ──
+  let finalAvg=avg;
+  if(detectedEye==='od')      finalAvg=hRatio(lms,IRIS_R,ER_OUT,ER_IN,w,h);
+  else if(detectedEye==='og') finalAvg=hRatio(lms,IRIS_L,EL_OUT,EL_IN,w,h);
+  smoothH=smoothH*0.75+finalAvg*0.25;
+  irisDir='none';
+  if(smoothH<0.5-SEUIL) irisDir='right';
+  else if(smoothH>0.5+SEUIL) irisDir='left';
  
   // ── Direction combinée : iris OU tête suffisent ──
   if(irisDir!=='none') gazeDir=irisDir;
@@ -637,15 +665,14 @@ function drawRing(canvas, sz, isSpinning, angle){
   ctx.lineWidth=sw;
   ctx.stroke();
   if(isSpinning){
-    const halfSpan=sw/(2*ir);
+    // Gap rectangulaire : largeur = e (sw), part du centre → dépasse le bord extérieur
+    // Résultat : ouverture identique à l'intérieur et à l'extérieur de l'anneau
     ctx.save();
     ctx.globalCompositeOperation='destination-out';
-    ctx.beginPath();
-    ctx.moveTo(cx,cy);
-    ctx.arc(cx,cy,r+2,angle-halfSpan,angle+halfSpan);
-    ctx.closePath();
+    ctx.translate(cx,cy);
+    ctx.rotate(angle);
     ctx.fillStyle='rgba(0,0,0,1)';
-    ctx.fill();
+    ctx.fillRect(0, -sw/2, r+4, sw);
     ctx.restore();
   }
 }
@@ -657,10 +684,209 @@ function updateDistLabel(level){
   // Arrondir à valeur standard la plus proche
   const avStd=[0.3,0.4,0.5,0.6,0.8,1.0,1.3,1.6,2.0,2.5,3.2,4.0,5.0,6.3,7.0,8.0,9.0,10.0];
   const avRound=avStd.reduce((a,b)=>Math.abs(b-avCorr)<Math.abs(a-avCorr)?b:a);
+  const eyeTag = detectedEye==='od'?'OD' : detectedEye==='og'?'OG' : detectedEye==='bino'?'Bino' : '';
   document.getElementById('sizeLabel').textContent=
-    'AV affichée '+avLabel(level.av)+'/10  ·  dist ~'+dist+' cm';
+    'AV '+avLabel(level.av)+'/10  ·  dist ~'+dist+' cm  ·  '+eyeTag;
   document.getElementById('distLabel').textContent=
     'AV corrigée à 80 cm : '+avLabel(avRound)+'/10';
+}
+ 
+// ── TRANSITION ENTRE NIVEAUX : étoile tournante ──
+let starRafId=null;
+let transitionActive=false;
+ 
+// ── Bibliothèque de formes de transition (monochromes) ──
+const SHAPES = [
+  // Étoile 5 branches classique
+  function starShape(ctx,cx,cy,r){
+    const pts=5;
+    ctx.beginPath();
+    for(let i=0;i<pts*2;i++){
+      const a=-Math.PI/2+(i*Math.PI)/pts;
+      const rad=i%2===0?r:r*0.40;
+      i===0?ctx.moveTo(cx+Math.cos(a)*rad,cy+Math.sin(a)*rad)
+           :ctx.lineTo(cx+Math.cos(a)*rad,cy+Math.sin(a)*rad);
+    }
+    ctx.closePath();ctx.fill();
+  },
+  // Cœur
+  function heartShape(ctx,cx,cy,r){
+    const s=r*0.9;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy+s*0.3);
+    ctx.bezierCurveTo(cx,cy-s*0.1, cx-s,cy-s*0.1, cx-s,cy-s*0.4);
+    ctx.bezierCurveTo(cx-s,cy-s*0.9, cx,cy-s*0.9, cx,cy-s*0.4);
+    ctx.bezierCurveTo(cx,cy-s*0.9, cx+s,cy-s*0.9, cx+s,cy-s*0.4);
+    ctx.bezierCurveTo(cx+s,cy-s*0.1, cx,cy-s*0.1, cx,cy+s*0.3);
+    ctx.closePath();ctx.fill();
+  },
+  // Soleil (cercle + rayons)
+  function sunShape(ctx,cx,cy,r){
+    ctx.beginPath();ctx.arc(cx,cy,r*0.38,0,Math.PI*2);ctx.fill();
+    const rays=8;
+    for(let i=0;i<rays;i++){
+      const a=(i/rays)*Math.PI*2;
+      const x1=cx+Math.cos(a)*r*0.50, y1=cy+Math.sin(a)*r*0.50;
+      const x2=cx+Math.cos(a)*r*0.92, y2=cy+Math.sin(a)*r*0.92;
+      ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
+      ctx.lineWidth=r*0.14;ctx.strokeStyle='#111';ctx.stroke();
+    }
+  },
+  // Lune
+  function moonShape(ctx,cx,cy,r){
+    ctx.beginPath();
+    ctx.arc(cx,cy,r*0.85,0,Math.PI*2);
+    ctx.fill();
+    ctx.save();
+    ctx.globalCompositeOperation='destination-out';
+    ctx.beginPath();
+    ctx.arc(cx+r*0.35,cy-r*0.15,r*0.72,0,Math.PI*2);
+    ctx.fillStyle='rgba(0,0,0,1)';ctx.fill();
+    ctx.restore();
+  },
+  // Fleur (pétales)
+  function flowerShape(ctx,cx,cy,r){
+    const petals=6;
+    for(let i=0;i<petals;i++){
+      const a=(i/petals)*Math.PI*2;
+      const px=cx+Math.cos(a)*r*0.44, py=cy+Math.sin(a)*r*0.44;
+      ctx.beginPath();ctx.arc(px,py,r*0.33,0,Math.PI*2);ctx.fill();
+    }
+    ctx.beginPath();ctx.arc(cx,cy,r*0.28,0,Math.PI*2);ctx.fill();
+  },
+  // Maison
+  function houseShape(ctx,cx,cy,r){
+    const s=r*0.78;
+    // Corps
+    ctx.fillRect(cx-s*0.62,cy-s*0.10,s*1.24,s*1.05);
+    // Toit (triangle)
+    ctx.beginPath();
+    ctx.moveTo(cx-s*0.78,cy-s*0.10);
+    ctx.lineTo(cx,cy-s*0.95);
+    ctx.lineTo(cx+s*0.78,cy-s*0.10);
+    ctx.closePath();ctx.fill();
+  },
+  // Papillon
+  function butterflyShape(ctx,cx,cy,r){
+    ctx.save();
+    for(let side=-1;side<=1;side+=2){
+      ctx.beginPath();
+      ctx.ellipse(cx+side*r*0.42,cy-r*0.20,r*0.42,r*0.58,side*0.5,0,Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx+side*r*0.36,cy+r*0.38,r*0.30,r*0.30,side*0.3,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  },
+  // Nuage
+  function cloudShape(ctx,cx,cy,r){
+    const circles=[[0,-0.12,0.42],[-.38,0.14,0.30],[.38,0.14,0.30],[-.18,0.24,0.32],[.18,0.24,0.32]];
+    circles.forEach(([dx,dy,rr])=>{
+      ctx.beginPath();ctx.arc(cx+dx*r,cy+dy*r,rr*r,0,Math.PI*2);ctx.fill();
+    });
+  },
+  // Lapin (silhouette)
+  function rabbitShape(ctx,cx,cy,r){
+    // Corps
+    ctx.beginPath();ctx.ellipse(cx,cy+r*0.18,r*0.52,r*0.44,0,0,Math.PI*2);ctx.fill();
+    // Tête
+    ctx.beginPath();ctx.ellipse(cx,cy-r*0.30,r*0.34,r*0.32,0,0,Math.PI*2);ctx.fill();
+    // Oreille gauche
+    ctx.beginPath();ctx.ellipse(cx-r*0.18,cy-r*0.78,r*0.10,r*0.30,-0.2,0,Math.PI*2);ctx.fill();
+    // Oreille droite
+    ctx.beginPath();ctx.ellipse(cx+r*0.18,cy-r*0.78,r*0.10,r*0.30,0.2,0,Math.PI*2);ctx.fill();
+  },
+];
+ 
+let shapeIndex=0; // cycle à travers les formes
+ 
+function drawStar(ctx, cx, cy, r, angle, alpha){
+  // Étoile classique pointue qui tourne — utilisée comme fond rotatif
+  ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+  ctx.save();
+  ctx.globalAlpha=alpha;
+  ctx.fillStyle='#111';
+  ctx.strokeStyle='#111';
+ 
+  // Étoile tournante
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.rotate(angle);
+  const pts=5;
+  ctx.beginPath();
+  for(let i=0;i<pts*2;i++){
+    const a=-Math.PI/2+(i*Math.PI)/pts;
+    const rad=i%2===0?r:r*0.40;
+    i===0?ctx.moveTo(Math.cos(a)*rad,Math.sin(a)*rad)
+         :ctx.lineTo(Math.cos(a)*rad,Math.sin(a)*rad);
+  }
+  ctx.closePath();ctx.fill();
+  ctx.restore();
+ 
+  ctx.restore();
+}
+ 
+function showTransition(onDone){
+  transitionActive=true;
+  if(starRafId) cancelAnimationFrame(starRafId);
+ 
+  document.getElementById('bLeft').style.opacity='0';
+  document.getElementById('bRight').style.opacity='0';
+ 
+  const starEl=document.getElementById('starCanvas');
+  const dpr=window.devicePixelRatio||1;
+  const sz=90;
+  starEl.style.width=sz+'px';
+  starEl.style.height=sz+'px';
+  starEl.width=sz*dpr;
+  starEl.height=sz*dpr;
+  const ctx=starEl.getContext('2d');
+  ctx.scale(dpr,dpr);
+  starEl.style.display='block';
+ 
+  const DURATION=2400;
+  const start=performance.now();
+  const SPEED=2*Math.PI*0.35/DURATION; // 0.35 tour en 2.4s — très lent
+ 
+  function loop(ts){
+    if(!transitionActive){ starEl.style.display='none'; return; }
+    const elapsed=ts-start;
+    const progress=Math.min(elapsed/DURATION,1);
+    let alpha=1;
+    if(progress<0.25) alpha=progress/0.25;
+    else if(progress>0.75) alpha=(1-progress)/0.25;
+ 
+    ctx.clearRect(0,0,sz,sz);
+    ctx.save();
+    ctx.globalAlpha=alpha;
+    ctx.translate(sz/2,sz/2);
+    ctx.rotate(elapsed*SPEED);
+    // Étoile 5 branches classique
+    const r=sz/2-4, pts=5;
+    ctx.beginPath();
+    for(let i=0;i<pts*2;i++){
+      const a=-Math.PI/2+(i*Math.PI)/pts;
+      const rad=i%2===0?r:r*0.40;
+      i===0?ctx.moveTo(Math.cos(a)*rad,Math.sin(a)*rad)
+           :ctx.lineTo(Math.cos(a)*rad,Math.sin(a)*rad);
+    }
+    ctx.closePath();
+    ctx.fillStyle='#111';
+    ctx.fill();
+    ctx.restore();
+ 
+    if(progress>=1){
+      starEl.style.display='none';
+      transitionActive=false;
+      document.getElementById('bLeft').style.opacity='1';
+      document.getElementById('bRight').style.opacity='1';
+      onDone();
+      return;
+    }
+    starRafId=requestAnimationFrame(loop);
+  }
+  starRafId=requestAnimationFrame(loop);
 }
  
 function setupStep(){
@@ -754,10 +980,13 @@ function masterLoop(ts){
       }
       lastRafTs=null;
       spinAngle=0;
-      if(clickMode) gazeDir='none'; // reset en mode clic après validation
-      setupStep();
-      rafId=requestAnimationFrame(masterLoop);
-      return; // repart proprement après setupStep
+      if(clickMode) gazeDir='none';
+      // Transition étoile puis nouveau niveau
+      showTransition(()=>{
+        setupStep();
+        rafId=requestAnimationFrame(masterLoop);
+      });
+      return; // masterLoop reprendra après la transition
     }
   } else {
     correctHoldStart=null;
@@ -775,7 +1004,12 @@ function finishTest(completed){
   if(testFinished) return; // guard double appel
   testFinished=true;
   testRunning=false;
-  cancelAnimationFrame(rafId); // arrête masterLoop
+  cancelAnimationFrame(rafId);
+  if(starRafId){cancelAnimationFrame(starRafId);starRafId=null;}
+  transitionActive=false;
+  document.getElementById('bLeft').style.opacity='1';
+  document.getElementById('bRight').style.opacity='1';
+  document.getElementById('starCanvas').style.display='none';
  
   const finalLevel=lastGoodSize; // always use lastGoodSize (updated before finishTest call)
   const levelsReached=completed?LANDOLT_LEVELS.length:stepIndex;
@@ -788,7 +1022,8 @@ function finishTest(completed){
     avCorr:avCorrFinal,
     dist:distAtEnd,
     levels:levelsReached,
-    completed
+    completed,
+    eye:eyeFinal
   };
   history.unshift(session);
   if(history.length>30)history=history.slice(0,30);
@@ -799,8 +1034,10 @@ function finishTest(completed){
   const avToM=(av)=>'M'+(av%1===0?av.toFixed(0):av.toString().replace('.',','));
   document.getElementById('rmNum').textContent=avToM(finalLevel.av);
   document.getElementById('rmUnit').textContent='à 80 cm';
+  const eyeLbl=eyeLabel(eyeFinal);
   document.getElementById('rmDist').textContent=
     'Acuité corrigée '+avToM(avCorrFinal)+' à '+distAtEnd+' cm';
+  document.getElementById('rmEye').textContent=eyeLbl;
   let verdict='';
   if(completed) verdict='Score parfait — tous les niveaux réussis !';
   else if(levelsReached>=10) verdict='Acuité attentionnelle excellente.';
@@ -881,7 +1118,7 @@ function renderHistory(){
   list.innerHTML=history.slice(0,8).map(s=>`
     <div class="rm-h-item">
       <span style="color:var(--muted)">${s.date} · ${s.levels} niv.</span>
-      <span style="font-weight:500">M${avLabel(s.av)}${s.avCorr?' → M'+s.avCorr+' @'+s.dist+'cm':''}</span>
+      <span style="font-weight:500">M${avLabel(s.av)} <span style="font-weight:400;color:var(--muted);font-size:10px;">${s.eye?s.eye.toUpperCase():''}</span>${s.avCorr?' → M'+s.avCorr+' @'+s.dist+'cm':''}</span>
     </div>
   `).join('');
 }
