@@ -3,508 +3,562 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Iris Gaze Tracker</title>
+<title>Gaze Test</title>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 
-  :root {
-    --bg: #0d0d0f;
-    --surface: #161618;
-    --surface2: #1e1e21;
-    --border: rgba(255,255,255,0.08);
-    --border2: rgba(255,255,255,0.14);
-    --text: #f0f0f0;
-    --muted: #888;
-    --blue: #4a9eff;
-    --green: #3ecf8e;
-    --pink: #f06292;
-    --amber: #ffb74d;
-    --font: 'DM Mono', 'Courier New', monospace;
-  }
+:root{
+  --bg:#ffffff;
+  --ink:#111111;
+  --muted:#999;
+  --ball:#111111;
+  --spin-glow:rgba(17,17,17,0.12);
+}
 
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap');
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 24px 16px;
-  }
+/* ── SCREENS ── */
+.screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;width:100%;padding:40px 24px;}
+.screen.active{display:flex;}
 
-  header {
-    width: 100%;
-    max-width: 960px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 24px;
-  }
+/* ── SETUP ── */
+#sSetup{gap:40px;}
 
-  .logo {
-    font-family: var(--font);
-    font-size: 13px;
-    letter-spacing: 0.12em;
-    color: var(--muted);
-    text-transform: uppercase;
-  }
-  .logo span { color: var(--blue); }
+.s-title{
+  font-size:clamp(14px,2vw,18px);
+  font-weight:400;
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
 
-  .status-pill {
-    display: flex; align-items: center; gap: 7px;
-    padding: 5px 14px;
-    border-radius: 20px;
-    border: 1px solid var(--border2);
-    background: var(--surface);
-    font-family: var(--font);
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    transition: all 0.3s;
-  }
-  .status-pill.active { border-color: var(--green); color: var(--green); }
-  .status-pill .dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: currentColor;
-  }
-  .status-pill.active .dot { animation: pulse 1.4s ease-in-out infinite; }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
+.s-params{
+  display:flex;flex-direction:column;gap:24px;
+  width:100%;max-width:400px;
+}
+.s-row{display:flex;flex-direction:column;gap:8px;}
+.s-label{
+  font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);
+}
+.range-wrap{display:flex;align-items:center;gap:12px;}
+input[type=range]{
+  flex:1;-webkit-appearance:none;height:2px;
+  background:#ddd;border-radius:1px;outline:none;cursor:pointer;border:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--ink);cursor:pointer;
+}
+.r-val{font-size:13px;min-width:36px;text-align:right;color:var(--ink);}
 
-  .main { display: grid; grid-template-columns: 1fr 300px; gap: 20px; width: 100%; max-width: 960px; }
-  @media (max-width: 700px) { .main { grid-template-columns: 1fr; } }
+.s-cam-row{display:flex;align-items:center;gap:10px;}
+.cam-dot{width:7px;height:7px;border-radius:50%;background:#ddd;flex-shrink:0;}
+.cam-dot.ok{background:#22cc66;animation:blink 1.4s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.cam-txt{font-size:12px;color:var(--muted);letter-spacing:0.06em;}
 
-  .video-block {
-    position: relative;
-    border-radius: 12px;
-    overflow: hidden;
-    background: #000;
-    border: 1px solid var(--border);
-    aspect-ratio: 4/3;
-  }
-  #video {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    display: block;
-    transform: scaleX(-1);
-  }
-  #canvas {
-    position: absolute; top: 0; left: 0;
-    width: 100%; height: 100%;
-    transform: scaleX(-1);
-    pointer-events: none;
-  }
+.btn-init{
+  background:none;border:1px solid #ddd;border-radius:4px;
+  padding:10px 24px;font-size:13px;letter-spacing:0.08em;
+  text-transform:uppercase;cursor:pointer;color:var(--ink);
+  transition:border-color .15s;
+}
+.btn-init:hover{border-color:var(--ink);}
+.btn-init:disabled{opacity:.35;cursor:not-allowed;}
 
-  .gaze-overlay {
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    padding: 16px 20px;
-    background: linear-gradient(transparent, rgba(0,0,0,0.85));
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .gaze-big {
-    font-family: var(--font);
-    font-size: 28px;
-    font-weight: 500;
-    color: #fff;
-    letter-spacing: 0.04em;
-    transition: color 0.15s;
-  }
-  .gaze-big.left { color: var(--blue); }
-  .gaze-big.right { color: var(--pink); }
-  .gaze-big.center { color: var(--green); }
+.btn-go{
+  background:var(--ink);color:#fff;border:none;border-radius:4px;
+  padding:14px 48px;font-size:14px;letter-spacing:0.12em;
+  text-transform:uppercase;cursor:pointer;
+  transition:opacity .15s;
+}
+.btn-go:hover{opacity:.8;}
+.btn-go:disabled{opacity:.25;cursor:not-allowed;}
 
-  .ratio-mini {
-    display: flex; align-items: center; gap: 8px;
-  }
-  .ratio-track {
-    width: 80px; height: 4px;
-    border-radius: 2px;
-    background: rgba(255,255,255,0.15);
-    position: relative;
-    overflow: hidden;
-  }
-  .ratio-fill {
-    height: 100%;
-    background: var(--blue);
-    border-radius: 2px;
-    transition: width 0.08s;
-  }
-  .ratio-num {
-    font-family: var(--font);
-    font-size: 11px;
-    color: var(--muted);
-    min-width: 28px;
-  }
+/* ── TEST ── */
+#sTest{
+  padding:0;justify-content:stretch;
+  position:relative;
+}
 
-  .panel { display: flex; flex-direction: column; gap: 14px; }
+.test-arena{
+  width:100vw;height:100vh;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;
+}
 
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 16px;
-  }
-  .card-label {
-    font-family: var(--font);
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 14px;
-  }
+/* progress bar top */
+.progress-bar{
+  position:fixed;top:0;left:0;right:0;height:3px;
+  background:#eee;z-index:20;
+}
+.progress-fill{
+  height:100%;background:var(--ink);
+  transition:width .1s linear;
+}
 
-  .caliper-item { margin-bottom: 14px; }
-  .caliper-item:last-child { margin-bottom: 0; }
-  .ci-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-  .ci-name { font-size: 13px; font-weight: 500; color: var(--text); }
-  .ci-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--blue); transition: all 0.2s; }
-  .ci-dot.right-eye { border-color: var(--pink); }
-  .ci-dot.detected { background: currentColor; opacity: 0.4; }
+/* timer tiny */
+.timer-hint{
+  position:fixed;top:14px;left:50%;transform:translateX(-50%);
+  font-size:11px;letter-spacing:0.14em;text-transform:uppercase;
+  color:#ccc;z-index:20;
+  font-variant-numeric:tabular-nums;
+}
 
-  input[type=range] {
-    -webkit-appearance: none;
-    width: 100%; height: 4px;
-    border-radius: 2px;
-    background: var(--surface2);
-    outline: none;
-    cursor: pointer;
-    border: 1px solid var(--border);
-  }
-  input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px; height: 14px;
-    border-radius: 50%;
-    background: var(--blue);
-    cursor: pointer;
-    transition: transform 0.1s;
-  }
-  input[type=range]::-webkit-slider-thumb:active { transform: scale(1.3); }
-  .range-row { display: flex; align-items: center; gap: 10px; }
-  .range-val {
-    font-family: var(--font);
-    font-size: 12px;
-    color: var(--blue);
-    min-width: 36px;
-    text-align: right;
-  }
+/* size label */
+.size-label{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  font-size:11px;letter-spacing:0.14em;text-transform:uppercase;
+  color:#ddd;z-index:20;
+}
 
-  .gaze-card {
-    text-align: center;
-    padding: 20px 12px;
-  }
-  .gaze-icon {
-    font-size: 52px;
-    line-height: 1;
-    margin-bottom: 10px;
-    transition: all 0.15s;
-    display: block;
-    min-height: 56px;
-  }
-  .gaze-word {
-    font-family: var(--font);
-    font-size: 22px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-    transition: color 0.15s;
-  }
-  .gaze-word.left { color: var(--blue); }
-  .gaze-word.right { color: var(--pink); }
-  .gaze-word.center { color: var(--green); }
-  .gaze-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+/* BALLS */
+.ball-container{
+  position:absolute;
+  display:flex;align-items:center;justify-content:center;
+}
 
-  .bar-full { margin-top: 14px; }
-  .bar-bg {
-    height: 6px; background: var(--surface2);
-    border-radius: 3px; overflow: hidden;
-    border: 1px solid var(--border);
-  }
-  .bar-fg { height: 100%; background: var(--blue); transition: width 0.1s; border-radius: 3px; }
-  .bar-labels {
-    display: flex; justify-content: space-between;
-    font-family: var(--font);
-    font-size: 10px;
-    color: var(--muted);
-    margin-top: 6px;
-    letter-spacing: 0.06em;
-  }
+.ball{
+  border-radius:50%;
+  background:var(--ball);
+  position:relative;
+  overflow:hidden;
+  transition:width .4s cubic-bezier(.34,1.56,.64,1), height .4s cubic-bezier(.34,1.56,.64,1);
+  flex-shrink:0;
+}
 
-  .btn {
-    width: 100%; padding: 10px 14px;
-    border-radius: 8px;
-    border: 1px solid var(--border2);
-    background: transparent;
-    color: var(--text);
-    font-family: var(--font);
-    font-size: 12px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn:hover { background: var(--surface2); border-color: var(--blue); color: var(--blue); }
-  .btn.active { background: var(--blue); border-color: var(--blue); color: #000; }
-  .btn.stop { border-color: var(--pink); }
-  .btn.stop:hover { background: var(--pink); color: #000; }
+/* spinning: black & white rotating spokes */
+.ball.spin{
+  background:transparent;
+  border:none;
+}
+.ball.spin::before{
+  content:'';
+  position:absolute;inset:0;border-radius:50%;
+  background:repeating-conic-gradient(
+    #000000 0deg 40deg,
+    #ffffff 40deg 80deg
+  );
+  animation:rotateball 1s linear infinite;
+}
+@keyframes rotateball{to{transform:rotate(360deg);}}
 
-  .mp-status {
-    font-family: var(--font);
-    font-size: 10px;
-    color: var(--muted);
-    text-align: center;
-    letter-spacing: 0.06em;
-  }
-  .mp-status.ok { color: var(--green); }
+/* highlight gloss both balls */
+.ball::after{
+  content:'';
+  position:absolute;
+  top:12%;left:18%;
+  width:30%;height:24%;
+  background:rgba(255,255,255,.28);
+  border-radius:50%;
+  transform:rotate(-20deg);
+}
 
-  #noFaceMsg {
-    position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    font-family: var(--font);
-    font-size: 13px;
-    color: rgba(255,255,255,0.3);
-    letter-spacing: 0.06em;
-    text-align: center;
-    pointer-events: none;
-    display: none;
-  }
+/* gaze ring on spin side */
+.ball.spin.gazing{
+  box-shadow:0 0 0 6px rgba(17,17,17,.12), 0 0 28px rgba(17,17,17,.08);
+}
+
+/* cam mini */
+.cam-mini{
+  position:fixed;bottom:16px;right:16px;
+  width:100px;height:75px;
+  border-radius:6px;overflow:hidden;
+  border:1px solid #eee;
+  background:#000;z-index:30;
+}
+#videoMini{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block;}
+#canvasMini{position:absolute;top:0;left:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none;}
+
+/* ── RESULTS ── */
+#sResults{gap:48px;}
+
+.r-score{text-align:center;}
+.r-num{
+  font-size:clamp(64px,12vw,120px);
+  font-weight:300;
+  line-height:1;
+  letter-spacing:-0.04em;
+  color:var(--ink);
+}
+.r-unit{font-size:clamp(16px,2.5vw,22px);color:var(--muted);font-weight:400;margin-top:6px;letter-spacing:0.1em;text-transform:uppercase;}
+
+.r-detail{
+  display:flex;flex-direction:column;gap:8px;
+  text-align:center;
+}
+.r-line{font-size:14px;color:var(--muted);letter-spacing:0.04em;}
+.r-line strong{color:var(--ink);font-weight:500;}
+
+.history-wrap{width:100%;max-width:380px;}
+.h-title{font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:#ccc;margin-bottom:10px;}
+.history-list{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;}
+.h-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 0;
+  border-bottom:1px solid #f0f0f0;
+  font-size:13px;
+}
+.h-date{color:var(--muted);}
+.h-score{font-weight:500;color:var(--ink);}
+
+.r-actions{display:flex;gap:12px;}
+.btn-again{
+  background:var(--ink);color:#fff;border:none;border-radius:4px;
+  padding:13px 36px;font-size:13px;letter-spacing:0.1em;
+  text-transform:uppercase;cursor:pointer;transition:opacity .15s;
+}
+.btn-again:hover{opacity:.75;}
+.btn-csv{
+  background:none;border:1px solid #ddd;border-radius:4px;
+  padding:13px 28px;font-size:13px;letter-spacing:0.1em;
+  text-transform:uppercase;cursor:pointer;color:var(--ink);transition:border-color .15s;
+}
+.btn-csv:hover{border-color:var(--ink);}
 </style>
 </head>
 <body>
 
-<header>
-  <div class="logo"><span>IRIS</span>.GAZE — tracker</div>
-  <div class="status-pill" id="statusPill">
-    <span class="dot"></span>
-    <span id="statusTxt">inactif</span>
+<!-- ══ SETUP ══ -->
+<div class="screen active" id="sSetup">
+  <div class="s-title">Gaze Attention Test</div>
+
+  <div style="display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;max-width:400px;">
+    <div class="s-cam-row">
+      <div class="cam-dot" id="camDot"></div>
+      <span class="cam-txt" id="camTxt">Caméra inactive</span>
+    </div>
+    <button class="btn-init" id="btnInit" onclick="initCam()">Activer la caméra</button>
+    <button class="btn-go" id="btnGo" onclick="startTest()" disabled>Commencer</button>
   </div>
-</header>
+  <!-- hidden inputs kept for code compatibility -->
+  <input type="hidden" id="pOG" value="10">
+  <input type="hidden" id="vOG" value="10">
+  <input type="hidden" id="pOD" value="10">
+  <input type="hidden" id="vOD" value="10">
+</div>
 
-<div class="main">
-  <div class="video-block">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="canvas"></canvas>
-    <div id="noFaceMsg">aucun visage détecté</div>
-    <div class="gaze-overlay">
-      <div class="gaze-big" id="gazeBig">—</div>
-      <div class="ratio-mini">
-        <div class="ratio-track"><div class="ratio-fill" id="ratioFill" style="width:50%"></div></div>
-        <div class="ratio-num" id="ratioNum">—</div>
-      </div>
+<!-- ══ TEST ══ -->
+<div class="screen" id="sTest">
+  <div class="progress-bar"><div class="progress-fill" id="progFill" style="width:100%"></div></div>
+  <div class="timer-hint" id="timerHint">5.0</div>
+
+  <div class="test-arena" id="arena">
+    <div class="ball-container" id="bcLeft">
+      <div class="ball" id="bLeft"></div>
+    </div>
+    <div class="ball-container" id="bcRight">
+      <div class="ball" id="bRight"></div>
     </div>
   </div>
 
-  <div class="panel">
-    <div class="card gaze-card">
-      <span class="gaze-icon" id="gazeIcon">👁</span>
-      <div class="gaze-word" id="gazeWord">ATTENTE</div>
-      <div class="gaze-hint" id="gazeHint">démarrer la caméra</div>
-      <div class="bar-full">
-        <div class="bar-bg"><div class="bar-fg" id="barFg" style="width:50%"></div></div>
-        <div class="bar-labels"><span>← GAUCHE</span><span>DROITE →</span></div>
-      </div>
-    </div>
+  <div class="size-label" id="sizeLabel"></div>
 
-    <div class="card">
-      <div class="card-label">Calipers iris</div>
-      <div class="caliper-item">
-        <div class="ci-head">
-          <span class="ci-name">OG — Œil Gauche</span>
-          <div class="ci-dot" id="dotOG" style="border-color:var(--blue)"></div>
-        </div>
-        <div class="range-row">
-          <input type="range" id="sOG" min="4" max="22" value="10" step="1">
-          <span class="range-val" id="vOG" style="color:var(--blue)">10</span>
-        </div>
-      </div>
-      <div class="caliper-item">
-        <div class="ci-head">
-          <span class="ci-name">OD — Œil Droit</span>
-          <div class="ci-dot right-eye" id="dotOD" style="border-color:var(--pink)"></div>
-        </div>
-        <div class="range-row">
-          <input type="range" id="sOD" min="4" max="22" value="10" step="1">
-          <span class="range-val" id="vOD" style="color:var(--pink)">10</span>
-        </div>
-      </div>
-    </div>
+  <div class="cam-mini">
+    <video id="videoMini" autoplay playsinline muted></video>
+    <canvas id="canvasMini"></canvas>
+  </div>
+</div>
 
-    <div class="card">
-      <div class="card-label">Seuil de détection</div>
-      <div class="range-row">
-        <input type="range" id="sSeuil" min="0.01" max="0.15" value="0.05" step="0.01">
-        <span class="range-val" id="vSeuil">0.05</span>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:8px;font-family:var(--font);letter-spacing:0.04em">
-        bas = très sensible · haut = tolérant
-      </div>
-    </div>
+<!-- ══ RESULTS ══ -->
+<div class="screen" id="sResults">
+  <div class="r-score">
+    <div class="r-num" id="rNum">—</div>
+    <div class="r-unit">dernière taille perçue (cm)</div>
+  </div>
 
-    <button class="btn active" id="startBtn">▶ démarrer caméra</button>
-    <button class="btn stop" id="stopBtn" style="display:none">⏹ arrêter</button>
-    <div class="mp-status" id="mpStatus">mediapipe non chargé</div>
+  <div class="r-detail">
+    <div class="r-line" id="rLevels">—</div>
+    <div class="r-line" id="rVerdict">—</div>
+  </div>
+
+  <div class="history-wrap">
+    <div class="h-title">Sessions</div>
+    <div class="history-list" id="histList"></div>
+  </div>
+
+  <div class="r-actions">
+    <button class="btn-again" onclick="goSetup()">Rejouer</button>
+    <button class="btn-csv" onclick="exportCSV()">Export CSV</button>
   </div>
 </div>
 
 <script>
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const statusPill = document.getElementById('statusPill');
-const statusTxt = document.getElementById('statusTxt');
-const mpStatus = document.getElementById('mpStatus');
-const gazeBig = document.getElementById('gazeBig');
-const gazeIcon = document.getElementById('gazeIcon');
-const gazeWord = document.getElementById('gazeWord');
-const gazeHint = document.getElementById('gazeHint');
-const ratioFill = document.getElementById('ratioFill');
-const ratioNum = document.getElementById('ratioNum');
-const barFg = document.getElementById('barFg');
-const noFaceMsg = document.getElementById('noFaceMsg');
-const dotOG = document.getElementById('dotOG');
-const dotOD = document.getElementById('dotOD');
-const startBtn = document.getElementById('startBtn');
-const stopBtn = document.getElementById('stopBtn');
+// ── CONFIG ──
+const SEUIL = 0.03;
+const STEP_DURATION = 5000; // max ms per level
+const HOLD_CORRECT_MS = 600; // ms of correct gaze needed to advance
+const BALL_SIZES = [220, 180, 150, 120, 96, 76, 60, 46, 36, 28, 22, 16];
 
-let diamOG = 10, diamOD = 10, seuil = 0.05;
-let cameraObj = null, faceMeshObj = null, running = false;
-let smooth = 0.5;
-
-document.getElementById('sOG').addEventListener('input', e => { diamOG = +e.target.value; document.getElementById('vOG').textContent = diamOG; });
-document.getElementById('sOD').addEventListener('input', e => { diamOD = +e.target.value; document.getElementById('vOD').textContent = diamOD; });
-document.getElementById('sSeuil').addEventListener('input', e => { seuil = +e.target.value; document.getElementById('vSeuil').textContent = (+e.target.value).toFixed(2); });
-
-const IRIS_L = [474,475,476,477];
-const IRIS_R = [469,470,471,472];
-const EL_OUT = 263, EL_IN = 362;
-const ER_OUT = 33,  ER_IN = 133;
-
-function center(lms, idx, w, h) {
-  let x=0,y=0; idx.forEach(i=>{x+=lms[i].x;y+=lms[i].y;});
-  return {x:x/idx.length*w, y:y/idx.length*h};
+// ── PX → CM conversion using a 1cm CSS reference element ──
+function getPxPerCm(){
+  const el=document.createElement('div');
+  el.style.cssText='position:absolute;width:1cm;height:1cm;visibility:hidden;';
+  document.body.appendChild(el);
+  const px=el.offsetWidth;
+  document.body.removeChild(el);
+  return px>0?px:37.8;
 }
-function pt(lms,i,w,h){return{x:lms[i].x*w,y:lms[i].y*h};}
+const PX_PER_CM=getPxPerCm();
+function pxToCm(px){return (px/PX_PER_CM).toFixed(1);}
+// side sequence: first always centered (both), then random L/R per step
+// We place spin ball on a random side each step
 
-function ratio(lms,irisIdx,out,inn,w,h){
-  const c=center(lms,irisIdx,w,h);
-  const o=pt(lms,out,w,h),i=pt(lms,inn,w,h);
-  const ew=Math.abs(o.x-i.x);
-  if(ew<1)return 0.5;
-  return(c.x-Math.min(o.x,i.x))/ew;
-}
+// ── STATE ──
+let diamOG=10, diamOD=10;
+let faceMeshObj=null, cameraObj=null, camReady=false;
+let smoothH=0.5, gazeDir='none';
+let testRunning=false;
+let stepIndex=0;        // current BALL_SIZES index
+let spinSide='left';    // current step's spin side
+let stepStartTime=0;
+let correctHoldStart=null; // timestamp when correct gaze began
+let lastGoodSize=BALL_SIZES[0];
+let rafId=null;
+let history=JSON.parse(localStorage.getItem('gazeHist2')||'[]');
 
-function caliper(cx,cy,r,color){
-  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);
-  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(cx-r-5,cy);ctx.lineTo(cx+r+5,cy);
-  ctx.moveTo(cx,cy-r-5);ctx.lineTo(cx,cy+r+5);
-  ctx.strokeStyle=color+'66';ctx.lineWidth=1;ctx.stroke();
-  ctx.beginPath();ctx.arc(cx,cy,2,0,Math.PI*2);
-  ctx.fillStyle=color;ctx.fill();
-}
+// ── SETUP CONTROLS ──
+document.getElementById('pOG').addEventListener('input',e=>{diamOG=+e.target.value;document.getElementById('vOG').textContent=diamOG;});
+document.getElementById('pOD').addEventListener('input',e=>{diamOD=+e.target.value;document.getElementById('vOD').textContent=diamOD;});
 
-function onResults(res){
-  const w=canvas.width,h=canvas.height;
-  ctx.clearRect(0,0,w,h);
-  if(!res.multiFaceLandmarks||!res.multiFaceLandmarks.length){
-    dotOG.classList.remove('detected'); dotOD.classList.remove('detected');
-    noFaceMsg.style.display='block';
-    setDir('none'); return;
-  }
-  noFaceMsg.style.display='none';
-  const lms=res.multiFaceLandmarks[0];
-  dotOG.classList.add('detected'); dotOD.classList.add('detected');
-
-  const cL=center(lms,IRIS_L,w,h);
-  const cR=center(lms,IRIS_R,w,h);
-  caliper(cL.x,cL.y,diamOG/2,'#4a9eff');
-  caliper(cR.x,cR.y,diamOD/2,'#f06292');
-
-  const rL=ratio(lms,IRIS_L,EL_OUT,EL_IN,w,h);
-  const rR=ratio(lms,IRIS_R,ER_OUT,ER_IN,w,h);
-  const avg=(rL+rR)/2;
-  smooth=smooth*0.75+avg*0.25;
-
-  const pct=Math.round(smooth*100);
-  const barW=Math.max(5,Math.min(95,pct));
-  ratioFill.style.width=barW+'%';
-  barFg.style.width=barW+'%';
-  ratioNum.textContent=pct+'%';
-
-  if(smooth<0.5-seuil) setDir('right');
-  else if(smooth>0.5+seuil) setDir('left');
-  else setDir('center');
-}
-
-function setDir(d){
-  const map={
-    left:  {big:'← gauche',icon:'←',word:'GAUCHE',hint:'regard vers la gauche',cls:'left'},
-    right: {big:'droite →',icon:'→',word:'DROITE',hint:'regard vers la droite',cls:'right'},
-    center:{big:'· centre ·',icon:'·',word:'CENTRE',hint:'regard centré',cls:'center'},
-    none:  {big:'—',icon:'👁',word:'ATTENTE',hint:'aucun visage',cls:''},
-  };
-  const m=map[d]||map.none;
-  gazeBig.textContent=m.big;
-  gazeBig.className='gaze-big '+m.cls;
-  gazeIcon.textContent=m.icon;
-  gazeWord.textContent=m.word;
-  gazeWord.className='gaze-word '+m.cls;
-  gazeHint.textContent=m.hint;
-}
-
-async function start(){
-  if(running)return;
-  startBtn.style.display='none'; stopBtn.style.display='';
-  statusTxt.textContent='chargement…'; mpStatus.textContent='initialisation mediapipe…';
+// ── CAMERA ──
+async function initCam(){
+  document.getElementById('btnInit').disabled=true;
+  document.getElementById('camTxt').textContent='Initialisation…';
+  const video=document.getElementById('videoMini');
+  const canvas=document.getElementById('canvasMini');
+  const ctx2=canvas.getContext('2d');
 
   faceMeshObj=new FaceMesh({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`});
   faceMeshObj.setOptions({maxNumFaces:1,refineLandmarks:true,minDetectionConfidence:0.5,minTrackingConfidence:0.5});
   faceMeshObj.onResults(res=>{
-    canvas.width=video.videoWidth||640;
-    canvas.height=video.videoHeight||480;
-    onResults(res);
+    canvas.width=video.videoWidth||320;
+    canvas.height=video.videoHeight||240;
+    ctx2.clearRect(0,0,canvas.width,canvas.height);
+    processIris(res,ctx2,canvas.width,canvas.height);
   });
   await faceMeshObj.initialize();
-  mpStatus.textContent='mediapipe actif ✓'; mpStatus.className='mp-status ok';
 
   cameraObj=new Camera(video,{
     onFrame:async()=>{if(faceMeshObj)await faceMeshObj.send({image:video});},
-    width:640,height:480
+    width:320,height:240
   });
   await cameraObj.start();
-  running=true;
-  statusPill.classList.add('active');
-  statusTxt.textContent='actif';
-  noFaceMsg.style.display='block';
+  camReady=true;
+  document.getElementById('camDot').className='cam-dot ok';
+  document.getElementById('camTxt').textContent='Prêt';
+  document.getElementById('btnInit').style.display='none';
+  document.getElementById('btnGo').disabled=false;
 }
 
-function stop(){
-  if(cameraObj){cameraObj.stop();cameraObj=null;}
-  if(faceMeshObj){faceMeshObj.close();faceMeshObj=null;}
-  running=false;
-  startBtn.style.display=''; stopBtn.style.display='none';
-  statusPill.classList.remove('active'); statusTxt.textContent='inactif';
-  mpStatus.textContent='mediapipe non chargé'; mpStatus.className='mp-status';
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  dotOG.classList.remove('detected'); dotOD.classList.remove('detected');
-  noFaceMsg.style.display='none';
-  setDir('none'); ratioFill.style.width='50%'; barFg.style.width='50%'; ratioNum.textContent='—';
+// ── IRIS PROCESSING ──
+const IRIS_L=[474,475,476,477],IRIS_R=[469,470,471,472];
+const EL_OUT=263,EL_IN=362,ER_OUT=33,ER_IN=133;
+
+function cOf(lms,idx,w,h){let x=0,y=0;idx.forEach(i=>{x+=lms[i].x;y+=lms[i].y;});return{x:x/idx.length*w,y:y/idx.length*h};}
+function pOf(lms,i,w,h){return{x:lms[i].x*w,y:lms[i].y*h};}
+function hRatio(lms,iris,out,inn,w,h){
+  const c=cOf(lms,iris,w,h),o=pOf(lms,out,w,h),i=pOf(lms,inn,w,h);
+  const ew=Math.abs(o.x-i.x);if(ew<1)return 0.5;
+  return(c.x-Math.min(o.x,i.x))/ew;
+}
+function drawCal(ctx,cx,cy,r,col){
+  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.strokeStyle=col;ctx.lineWidth=1.2;ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx-r-3,cy);ctx.lineTo(cx+r+3,cy);ctx.moveTo(cx,cy-r-3);ctx.lineTo(cx,cy+r+3);
+  ctx.strokeStyle=col+'55';ctx.lineWidth=1;ctx.stroke();
 }
 
-startBtn.addEventListener('click',start);
-stopBtn.addEventListener('click',stop);
+function processIris(res,ctx,w,h){
+  if(!res.multiFaceLandmarks||!res.multiFaceLandmarks.length){gazeDir='none';return;}
+  const lms=res.multiFaceLandmarks[0];
+  const cL=cOf(lms,IRIS_L,w,h),cR=cOf(lms,IRIS_R,w,h);
+  drawCal(ctx,cL.x,cL.y,diamOG/2,'#4af');
+  drawCal(ctx,cR.x,cR.y,diamOD/2,'#f4a');
+  const avg=((hRatio(lms,IRIS_L,EL_OUT,EL_IN,w,h))+(hRatio(lms,IRIS_R,ER_OUT,ER_IN,w,h)))/2;
+  smoothH=smoothH*0.75+avg*0.25;
+  if(smoothH<0.5-SEUIL) gazeDir='right';
+  else if(smoothH>0.5+SEUIL) gazeDir='left';
+  else gazeDir='none';
+}
+
+// ── TEST ──
+function startTest(){
+  if(!camReady)return;
+  stepIndex=0;
+  correctHoldStart=null;
+  lastGoodSize=BALL_SIZES[0];
+  showScreen('sTest');
+  setupStep();
+  testRunning=true;
+  rafId=requestAnimationFrame(testLoop);
+}
+
+function setupStep(){
+  const sz=BALL_SIZES[stepIndex];
+  // random side for spin ball (pure random each step)
+  spinSide=Math.random()<0.5?'left':'right';
+
+  const bSpin=document.getElementById(spinSide==='left'?'bLeft':'bRight');
+  const bStill=document.getElementById(spinSide==='left'?'bRight':'bLeft');
+
+  // position both in their half
+  positionHalf('bcLeft','left',sz);
+  positionHalf('bcRight','right',sz);
+
+  bSpin.className='ball spin';
+  bStill.className='ball';
+  bSpin.style.width=bSpin.style.height=sz+'px';
+  bStill.style.width=bStill.style.height=sz+'px';
+
+  document.getElementById('sizeLabel').textContent='Ø '+pxToCm(sz)+' cm';
+  document.getElementById('progFill').style.transition='none';
+  document.getElementById('progFill').style.width='100%';
+  correctHoldStart=null;
+  stepStartTime=Date.now();
+  // force reflow then animate
+  setTimeout(()=>{
+    document.getElementById('progFill').style.transition='width '+STEP_DURATION+'ms linear';
+    document.getElementById('progFill').style.width='0%';
+  },30);
+}
+
+function positionHalf(containerId, side, sz){
+  const el=document.getElementById(containerId);
+  const vw=window.innerWidth, vh=window.innerHeight;
+  // Place balls further into periphery: 20% and 80% of screen width
+  const cx=(side==='left'? vw*0.20 : vw*0.80);
+  const cy=vh/2;
+  el.style.position='absolute';
+  el.style.left=(cx-sz/2)+'px';
+  el.style.top=(cy-sz/2)+'px';
+  el.style.width=sz+'px';
+  el.style.height=sz+'px';
+}
+
+function testLoop(ts){
+  if(!testRunning){return;}
+
+  const now=Date.now();
+  const elapsed=now-stepStartTime;
+  const remaining=Math.max(0,(STEP_DURATION-elapsed)/1000);
+
+  document.getElementById('timerHint').textContent=remaining.toFixed(1);
+
+  // gaze on spin side?
+  const gazingCorrect=(gazeDir===spinSide);
+
+  // update glow
+  const bSpin=document.getElementById(spinSide==='left'?'bLeft':'bRight');
+  if(gazingCorrect) bSpin.classList.add('gazing');
+  else bSpin.classList.remove('gazing');
+
+  if(gazingCorrect){
+    if(correctHoldStart===null) correctHoldStart=now;
+    const held=now-correctHoldStart;
+    if(held>=HOLD_CORRECT_MS){
+      // SUCCESS — advance
+      lastGoodSize=BALL_SIZES[stepIndex];
+      stepIndex++;
+      if(stepIndex>=BALL_SIZES.length){
+        // beat all levels
+        finishTest(true);
+        return;
+      }
+      setupStep();
+      rafId=requestAnimationFrame(testLoop);
+      return;
+    }
+  } else {
+    correctHoldStart=null;
+  }
+
+  // timeout?
+  if(elapsed>=STEP_DURATION){
+    // failed this level
+    finishTest(false);
+    return;
+  }
+
+  rafId=requestAnimationFrame(testLoop);
+}
+
+function finishTest(completed){
+  testRunning=false;
+  cancelAnimationFrame(rafId);
+
+  const finalSize=completed?BALL_SIZES[BALL_SIZES.length-1]:lastGoodSize;
+  const levelsReached=completed?BALL_SIZES.length:stepIndex;
+
+  const session={
+    date:new Date().toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),
+    size:finalSize,
+    levels:levelsReached,
+    completed
+  };
+  history.unshift(session);
+  if(history.length>30)history=history.slice(0,30);
+  localStorage.setItem('gazeHist2',JSON.stringify(history));
+
+  // fill result screen
+  document.getElementById('rNum').textContent=pxToCm(finalSize)+' cm';
+  document.getElementById('rLevels').innerHTML=`<strong>${levelsReached}</strong> niveau${levelsReached>1?'x':''} passé${levelsReached>1?'s':''}`;
+  let verdict='';
+  if(levelsReached>=10) verdict='Acuité attentionnelle excellente.';
+  else if(levelsReached>=7) verdict='Bonne attraction visuelle au mouvement.';
+  else if(levelsReached>=4) verdict='Attraction modérée — sensible aux grands stimuli.';
+  else verdict='Faible attraction détectée.';
+  if(completed) verdict='Score parfait — tous les niveaux réussis !';
+  document.getElementById('rVerdict').textContent=verdict;
+
+  renderHistory();
+  showScreen('sResults');
+}
+
+function renderHistory(){
+  const list=document.getElementById('histList');
+  if(!history.length){list.innerHTML='<div style="font-size:12px;color:#ccc;padding:8px 0">Aucune session</div>';return;}
+  list.innerHTML=history.map((s,i)=>`
+    <div class="h-item">
+      <span class="h-date">${s.date} · ${s.levels} niveau${s.levels>1?'x':''}</span>
+      <span class="h-score">Ø ${pxToCm(s.size)} cm</span>
+    </div>
+  `).join('');
+}
+
+function goSetup(){
+  testRunning=false;
+  cancelAnimationFrame(rafId);
+  showScreen('sSetup');
+}
+
+function exportCSV(){
+  const rows=[['#','Date','Taille finale','Niveaux','Complété']];
+  history.forEach((s,i)=>rows.push([history.length-i,s.date,pxToCm(s.size)+'cm',s.levels,s.completed?'oui':'non']));
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='gaze_test_'+Date.now()+'.csv';
+  a.click();
+}
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+renderHistory();
 </script>
 </body>
 </html>
