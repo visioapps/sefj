@@ -64,6 +64,31 @@ input[type=range]::-webkit-slider-thumb{
 .r-val{font-size:13px;min-width:36px;text-align:right;color:var(--ink);}
  
 .s-cam-row{display:flex;align-items:center;gap:10px;}
+ 
+/* ── CALIBRATION RÈGLE ── */
+.cal-wrap{width:100%;max-width:400px;display:flex;flex-direction:column;gap:10px;}
+.cal-label{font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);}
+.cal-ruler-row{display:flex;align-items:center;gap:10px;}
+.cal-ruler{
+  height:28px;background:#111;border-radius:3px;cursor:ew-resize;
+  position:relative;flex-shrink:0;touch-action:none;
+  display:flex;align-items:center;justify-content:center;
+}
+.cal-ruler::after{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,
+    transparent 0px, transparent 9px,
+    rgba(255,255,255,0.3) 9px, rgba(255,255,255,0.3) 10px
+  );
+  border-radius:3px;
+}
+.cal-ruler-txt{
+  position:absolute;color:#fff;font-size:10px;
+  letter-spacing:0.08em;z-index:1;pointer-events:none;
+}
+.cal-val{font-size:13px;color:var(--ink);min-width:40px;}
+.cal-note{font-size:10px;color:#bbb;letter-spacing:0.04em;line-height:1.5;}
+.cal-ok{font-size:10px;color:#22cc66;letter-spacing:0.06em;display:none;}
 .cam-dot{width:7px;height:7px;border-radius:50%;background:#ddd;flex-shrink:0;}
 .cam-dot.ok{background:#22cc66;animation:blink 1.4s ease-in-out infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
@@ -275,6 +300,19 @@ input[type=range]::-webkit-slider-thumb{
 <div class="screen active" id="sSetup">
   <div class="s-title">Gaze Attention Test</div>
  
+  <!-- Calibration règle -->
+  <div class="cal-wrap">
+    <div class="cal-label">Calibration écran — posez une règle et ajustez jusqu'à 10 cm</div>
+    <div class="cal-ruler-row">
+      <div class="cal-ruler" id="calRuler" style="width:200px;">
+        <span class="cal-ruler-txt" id="calRulerTxt">10 cm ?</span>
+      </div>
+      <span class="cal-val" id="calValTxt">—</span>
+    </div>
+    <div class="cal-note">Glissez le bord droit de la barre pour qu'elle fasse exactement 10 cm sur votre règle physique.</div>
+    <div class="cal-ok" id="calOk">✓ Calibration sauvegardée</div>
+  </div>
+ 
   <div style="display:flex;flex-direction:column;align-items:center;gap:14px;width:100%;max-width:400px;">
     <div class="s-cam-row">
       <div class="cam-dot" id="camDot"></div>
@@ -373,20 +411,32 @@ const LANDOLT_LEVELS = [
   {av:10.0, hmm:5.82},
 ];
  
-// ── PX ↔ MM conversion via 1cm CSS reference ──
-function getPxPerCm(){
+// ── PX ↔ MM : calibration physique via règle ──
+// CSS 1cm ≠ 1cm physique sur mobile → on demande à l'utilisateur de calibrer
+let PX_PER_CM = (()=>{
   const el=document.createElement('div');
   el.style.cssText='position:absolute;width:1cm;height:1cm;visibility:hidden;';
   document.body.appendChild(el);
-  const px=el.offsetWidth;
+  const px=el.offsetWidth||37.8;
   document.body.removeChild(el);
-  return px>0?px:37.8;
-}
-const PX_PER_CM=getPxPerCm();
-const PX_PER_MM=PX_PER_CM/10;
+  return px;
+})();
+// Essayer de récupérer une calibration sauvegardée
+try {
+  const saved = localStorage.getItem('pxPerCm');
+  if(saved && parseFloat(saved)>10) PX_PER_CM = parseFloat(saved);
+} catch(e){}
+let PX_PER_MM = PX_PER_CM/10;
  
 function mmToPx(mm){ return Math.round(mm * PX_PER_MM); }
 function avLabel(av){ return av % 1 === 0 ? av.toFixed(0) : av.toString().replace('.',','); }
+ 
+function applyCalibration(rulerPx){
+  // rulerPx = nb pixels CSS pour 10cm mesurés sur la règle à l'écran
+  PX_PER_CM = rulerPx / 10;
+  PX_PER_MM = PX_PER_CM / 10;
+  try { localStorage.setItem('pxPerCm', PX_PER_CM); } catch(e){}
+}
 // side sequence: first always centered (both), then random L/R per step
 // We place spin ball on a random side each step
  
@@ -780,6 +830,59 @@ function finishTest(completed){
   setTimeout(()=>document.getElementById('resultModal').classList.add('visible'), 0);
 }
  
+// ── CALIBRATION RÈGLE DRAGGABLE ──
+(function initCalibration(){
+  const ruler=document.getElementById('calRuler');
+  const valTxt=document.getElementById('calValTxt');
+  const rulerTxt=document.getElementById('calRulerTxt');
+  const calOk=document.getElementById('calOk');
+ 
+  // Initialiser à la valeur CSS (37.8px/cm) ou sauvegardée
+  let rulerPx=PX_PER_CM*10; // pixels CSS pour 10cm selon calibration actuelle
+  const MIN=80, MAX=Math.min(window.innerWidth-40, 600);
+  rulerPx=Math.max(MIN,Math.min(MAX,rulerPx));
+ 
+  function updateRuler(px){
+    rulerPx=Math.max(MIN,Math.min(MAX,px));
+    ruler.style.width=rulerPx+'px';
+    const cm=(rulerPx/PX_PER_CM).toFixed(1); // affiche cm CSS actuels
+    // Ce qu'on veut: l'utilisateur fait correspondre visuellement à 10cm réels
+    rulerTxt.textContent='← 10 cm →';
+    valTxt.textContent=Math.round(rulerPx)+'px';
+  }
+  updateRuler(rulerPx);
+ 
+  let dragging=false, startX=0, startW=0;
+ 
+  function onStart(e){
+    dragging=true;
+    startX=e.touches?e.touches[0].clientX:e.clientX;
+    startW=rulerPx;
+    e.preventDefault();
+  }
+  function onMove(e){
+    if(!dragging)return;
+    const x=e.touches?e.touches[0].clientX:e.clientX;
+    updateRuler(startW+(x-startX));
+    e.preventDefault();
+  }
+  function onEnd(){
+    if(!dragging)return;
+    dragging=false;
+    // Appliquer la calibration : rulerPx CSS = 10cm physiques
+    applyCalibration(rulerPx);
+    calOk.style.display='block';
+    setTimeout(()=>calOk.style.display='none',2000);
+  }
+ 
+  ruler.addEventListener('mousedown',onStart);
+  ruler.addEventListener('touchstart',onStart,{passive:false});
+  window.addEventListener('mousemove',onMove);
+  window.addEventListener('touchmove',onMove,{passive:false});
+  window.addEventListener('mouseup',onEnd);
+  window.addEventListener('touchend',onEnd);
+})();
+ 
 function renderHistory(){
   // Rend l'historique dans la modale résultats
   const list=document.getElementById('rmHistList');
@@ -827,3 +930,4 @@ function showScreen(id){
 </script>
 </body>
 </html>
+ 
